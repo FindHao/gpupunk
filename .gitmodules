@@ -2,3 +2,9 @@
 	path = drcctprof
 	url = git@github.com:FindHao/DrCCTProf.git
 	branch = gpupunk
+[submodule "gpupunk_sanitizer_patch"]
+	path = gpupunk_sanitizer_patch
+	url = git@github.com:FindHao/gpupunk_sanitizer_patch.git
+[submodule "gputrigger"]
+	path = gputrigger
+	url = git@github.com:FindHao/gputrigger.git
