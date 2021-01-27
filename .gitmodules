@@ -5,3 +5,6 @@
 [submodule "gputrigger"]
 	path = gputrigger
 	url = git@github.com:FindHao/gputrigger.git
+[submodule "gpupunk_samples"]
+	path = gpupunk_samples
+	url = git@github.com:FindHao/gpupunk_samples.git
