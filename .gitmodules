@@ -8,3 +8,6 @@
 [submodule "gpupunk_samples"]
 	path = gpupunk_samples
 	url = git@github.com:FindHao/gpupunk_samples.git
+[submodule "redshow"]
+	path = redshow
+	url = git@github.com:GVProf/redshow.git

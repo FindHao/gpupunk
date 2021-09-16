@@ -1,3 +1,4 @@
 drcctprof/build_debug/
 drcctprof/build/
+drcctprof/logs
 
