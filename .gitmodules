@@ -11,3 +11,6 @@
 [submodule "redshow"]
 	path = redshow
 	url = git@github.com:GVProf/redshow.git
+[submodule "libmonitor"]
+	path = libmonitor
+	url = git@github.com:HPCToolkit/libmonitor.git
