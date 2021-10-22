@@ -1,3 +1,8 @@
+An experimental cpu-gpu heterogeneous profiling tool
+
+Still in developing. All text are no reliable and source code are unstable to test.
+
+
 gputrigger: 
 
 - Callback functions which is used to catch the triggers of CUDA APIs. It will be monitered by gpupunk client of drcctprof. 
