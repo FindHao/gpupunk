@@ -43,4 +43,5 @@ cmake .. -Dredshow_path=${install_path}/redshow  -DCMAKE_INSTALL_PREFIX=${instal
 make -j 16
 make install -j 4
 
-# export GPUPUNK_PATCH=/home/yhao24/opt/gpupunk/gpu-patch/lib/gpu-patch.fatbin
+cd ${source_path}
+cp -rf ./bin ${install_path}/

@@ -43,7 +43,7 @@ extern "C" __device__ uint32_t gpu_queue_get(gpu_patch_buffer_t *buffer, uint32_
       tail_index = 0;
     }
   }
-
+  assert(tail_index <= size);
   return tail_index - 1;
 }
 
