@@ -24,7 +24,7 @@ echo $install_path
 
 cd ${source_path}/gpu-patch
 make clean
-make PREFIX=${install_path}/gpu-patch CUDA_PATH=$CUDA_PATH install
+make PREFIX=${install_path}/gpu-patch CUDA_PATH=$CUDA_PATH install -j 12
 
 cd  ${source_path}/redshow
 make clean
@@ -43,5 +43,18 @@ cmake .. -Dredshow_path=${install_path}/redshow  -DCMAKE_INSTALL_PREFIX=${instal
 make -j 16
 make install -j 4
 
+
+export ENABLE_GPUTRIGGER=1
+export REDSHOW_PATH=${install_path}/redshow
+export GPUPATCH_PATH=${install_path}/gpu-patch
+cd ${source_path}/drcctprof
+./scripts/build_tool/make_clean.sh
+./scripts/build_tool/make.sh
+
+cp -r build ${install_path}/drcctprof/
+
+
 cd ${source_path}
-cp -rf ./bin ${install_path}/
+# cp -rf ./bin ${install_path}/
+mkdir ${install_path}/bin
+ln -s ${source_path}/bin/gpupunk ${install_path}/bin/gpupunk

@@ -1,9 +1,10 @@
 
-
+export ENABLE_GPUTRIGGER=1
 export GPUPUNK_PATH=/home/yhao24/opt/gpupunk
-export GPUPATCH_PATH=${GPUPUNK_PATH}/gpu-patch/lib/gpu-patch.fatbin
+export GPUPATCH_PATH=${GPUPUNK_PATH}/gpu-patch/
 export REDSHOW_PATH=${GPUPUNK_PATH}/redshow
 export GPUTRIGGER_PATH=${GPUPUNK_PATH}/gputrigger
+export DRCCTPROF_PATH=${GPUPUNK_PATH}/drcctprof
 
 export LD_LIBRARY_PATH=${GPUTRIGGER_PATH}:${REDSHOW_PATH}/lib:$LD_LIBRARY_PATH
-export PATH=${GPUPUNK_PATH}/bin/:$PATH
+export PATH=${GPUPUNK_PATH}/bin/:${DRCCTPROF_PATH}/bin:$PATH
