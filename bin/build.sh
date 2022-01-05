@@ -2,7 +2,7 @@
 
 
 if [ $# -lt 1 ];then
-    echo "usage: script/build.sh target_install_path"
+    echo "usage: bin/build.sh target_install_path"
     exit -1
 fi
 

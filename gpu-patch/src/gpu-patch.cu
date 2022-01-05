@@ -229,7 +229,6 @@ extern "C" __device__ __noinline__
         record->flat_block_id = get_flat_block_id();
         record->flat_thread_id = get_flat_thread_id();
         record->target_pc = targetPc;
-        //        record.sanitizer_flag = flags;
         record->flags = GPU_PATCH_FUNCTION_CALL;
         gpu_queue_push(buffer);
     }
@@ -255,7 +254,6 @@ extern "C" __device__ __noinline__
         record->flat_block_id = get_flat_block_id();
         record->flat_thread_id = get_flat_thread_id();
         record->target_pc = targetPc;
-        //        record->sanitizer_flag = flags;
         record->flags = GPU_PATCH_FUNCTION_RET;
         gpu_queue_push(buffer);
     }
