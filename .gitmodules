@@ -1,7 +1,3 @@
-[submodule "drcctprof"]
-	path = drcctprof
-	url = git@github.com:FindHao/DrCCTProf.git
-	branch = gpupunk
 [submodule "gputrigger"]
 	path = gputrigger
 	url = git@github.com:FindHao/gputrigger.git
@@ -14,3 +10,6 @@
 [submodule "libmonitor"]
 	path = libmonitor
 	url = git@github.com:HPCToolkit/libmonitor.git
+[submodule "drcctprof_clients"]
+	path = drcctprof_clients
+	url = git@github.com:dolanzhao/drcctprof_clients.git
