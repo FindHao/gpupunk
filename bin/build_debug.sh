@@ -29,7 +29,7 @@ make PREFIX=${install_path}/gpu-patch CUDA_PATH=$CUDA_PATH install -j 12
 
 cd  ${source_path}/redshow
 make clean
-make PREFIX=${install_path}/redshow BOOST_DIR=/scratch/spack/opt/spack/linux-ubuntu20.04-cascadelake/gcc-9.3.0/boost-1.76.0-bx6o75jbt5g5ngshnrpzlvodqpjnvjxh GPU_PATCH_DIR=${install_path}/gpu-patch DEBUG=1  STATIC_CPP=1 install -j 12
+make PREFIX=${install_path}/redshow BOOST_DIR=/scratch/spack/opt/spack/linux-ubuntu20.04-cascadelake/gcc-9.3.0/boost-1.76.0-bx6o75jbt5g5ngshnrpzlvodqpjnvjxh GPU_PATCH_DIR=${install_path}/gpu-patch DEBUG=1  STATIC_CPP=1 install -j 12 -f Makefile.static
 
 cd ${source_path}/libmonitor
 make clean
@@ -49,8 +49,8 @@ export ENABLE_GPUTRIGGER=1
 export REDSHOW_PATH=${install_path}/redshow
 export GPUPATCH_PATH=${install_path}/gpu-patch
 cd ${source_path}/drcctprof_clients
-./build_clean.sh ; ./build.sh
-cp -r ./DrCCTProf/build ${install_path}/drcctprof
+./build_clean.sh ; ./build_debug.sh
+cp -r ./DrCCTProf/build_debug ${install_path}/drcctprof-debug
 
 
 cd ${source_path}

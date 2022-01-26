@@ -101,7 +101,7 @@ then
 fi
 
 if [ $GPUPUNK_WITH_DRRUN -eq 1 ];then
-    DRRUN="${DRCCTPROF_PATH}/bin64/drrun -t drcctlib_cpu_gpu_memory --"
+    DRRUN="${DRCCTPROF_PATH}/bin64/drrun -dumpcore_mask 0x837f  -t drcctlib_cpu_gpu_memory --"
 else
     DRRUN=
 fi
