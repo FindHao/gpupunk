@@ -40,7 +40,7 @@ make install
 cd ${source_path}/gputrigger
 rm -rf build
 mkdir build && cd build
-cmake .. -Dredshow_path=${install_path}/redshow  -DCMAKE_INSTALL_PREFIX=${install_path}/gputrigger -Dgpu_patch_path=${install_path}/gpu-patch
+cmake ..  -DCMAKE_INSTALL_PREFIX=${install_path}/gputrigger -Dgpu_patch_path=${install_path}/gpu-patch
 make -j 16
 make install -j 4
 
