@@ -10,7 +10,6 @@ if [ -z $DRCCTPROF_PATH ]; then
     exit -1
 fi
 
-
 gputrigger_lib_path=${GPUPUNK_PATH}/gputrigger/libgputrigger.so
 libmonitor_path=${GPUPUNK_PATH}/libmonitor/lib/libmonitor.so
 # default analysis mode is mem_page
@@ -19,6 +18,10 @@ export GPUPUNK_ANALYSIS_MODE=5
 export W_LIBMONITOR=1
 # with drcctprof
 export GPUPUNK_WITH_DRRUN=1
+# with hpcrun
+export GPUPUNK_WITH_HPCRUN=0
+# with detail log
+export GPUPUNK_VERBOSE=0
 
 usage() {
     cat <<EOF
@@ -32,6 +35,12 @@ Usage:
         default is mem_page. 
     -drrun [yes|no|y|n]
         default is yes. This option will enable drcctprof.
+    -hpcrun [yes|no|y|n]
+        default is no. This option will enable hpcrun.
+    -v [yes|no|y|n]
+        default is no. This option will enable verbose.
+    -l <launcher>
+        default is none. pass launcher command for execution. (e.g., "mpirun -np 1")
 EOF
     exit 0
 }
@@ -53,16 +62,16 @@ while test "x$1" != x; do
         shift
         ;;
     -m)
-        case $1 in 
-            "mem_page")
-                export GPUPUNK_ANALYSIS_MODE=5
-                ;;
-            "value_pattern")
-                export GPUPUNK_ANALYSIS_MODE=3
-                ;;
-            *)
-                export GPUPUNK_ANALYSIS_MODE=5
-                ;;
+        case $1 in
+        "mem_page")
+            export GPUPUNK_ANALYSIS_MODE=5
+            ;;
+        "value_pattern")
+            export GPUPUNK_ANALYSIS_MODE=3
+            ;;
+        *)
+            export GPUPUNK_ANALYSIS_MODE=5
+            ;;
         esac
         shift
         ;;
@@ -75,7 +84,26 @@ while test "x$1" != x; do
                 exit -1
             fi
         fi
-        
+        shift
+        ;;
+    -hpcrun)
+        if [ $1 == "no" ] || [ $1 == "n" ]; then
+            export GPUPUNK_WITH_HPCRUN=0
+        else
+            if [ $1 != "yes" ] && [ $1 != "y" ]; then
+                echo "wrong argument pattern for -drhpcrun"
+                exit -1
+            else
+                export GPUPUNK_WITH_HPCRUN=1
+            fi
+        fi
+        shift
+        ;;
+    -v)
+        export GPUPUNK_VERBOSE=1
+        ;;
+    -l)
+        export GPUPUNK_LAUNCHER="$1"
         shift
         ;;
     -h)
@@ -89,22 +117,53 @@ while test "x$1" != x; do
     esac
 done
 
-
 GPUPUNK_EXEC=$1
 GPUPUNK_ARGS="${*:2}"
 
-if [ -z "$GPUPUNK_EXEC" ]
-then
-  echo "Empty executable"
-  usage
-  exit
+if [ -z "$GPUPUNK_EXEC" ]; then
+    echo "Empty executable"
+    usage
+    exit
 fi
 
-if [ $GPUPUNK_WITH_DRRUN -eq 1 ];then
-    DRRUN="${DRCCTPROF_PATH}/bin64/drrun -dumpcore_mask 0x837f  -t drcctlib_cpu_gpu_memory --"
+if [ ! -z $GPUPUNK_VERBOSE ]; then
+    export GPUPUNK_REDIRECT=./gpupunk.log
+else
+    export GPUPUNK_REDIRECT=/dev/null
+fi
+
+if [ $GPUPUNK_WITH_HPCRUN -eq 1 ]; then
+    if [ -z $HPCTOOLKIT_PATH ]; then
+        echo "HPCTOOLKIT_PATH is not set."
+        exit -1
+    fi
+    MEASUREMENTS=gpupunk-measurements
+    DATABASE=gpupunk-database
+    echo "Make sure $MEASUREMENTS and $DATABASE is clean"
+    rm -rf $MEASUREMENTS
+    rm -rf $DATABASE
+    HPCRUN=${HPCTOOLKIT_PATH}/bin/hpcrun
+    echo "$GPUPUNK_LAUNCHER $HPCRUN -e gpu=nvidia -o $MEASUREMENTS $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
+    $GPUPUNK_LAUNCHER $HPCRUN -e gpu=nvidia -o $MEASUREMENTS $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT
+    HPCSTRUCT=${HPCTOOLKIT_PATH}/bin/hpcstruct
+    $HPCSTRUCT -j 12 $MEASUREMENTS &>> $GPUPUNK_REDIRECT
+    rm ./cubins ./structs
+    ln -s $MEASUREMENTS/cubins ./
+    ln -s $MEASUREMENTS/structs ./
+fi
+
+if [ $GPUPUNK_WITH_DRRUN -eq 1 ]; then
+    # DRRUN="${DRCCTPROF_PATH}/bin64/drrun -dumpcore_mask 0x837f  -t drcctlib_cpu_gpu_memory --"
+    DRRUN="${DRCCTPROF_PATH}/bin64/drrun -t drcctlib_cpu_gpu_memory --"
 else
     DRRUN=
 fi
 
-echo ${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS
-LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS
+if [ $GPUPUNK_LAUNCHER ]; then
+    echo "$GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
+    $GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT
+else
+    echo "LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
+    LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT
+fi
+
