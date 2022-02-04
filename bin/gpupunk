@@ -106,6 +106,12 @@ while test "x$1" != x; do
         export GPUPUNK_LAUNCHER="$1"
         shift
         ;;
+    -ck)
+        str=$1
+        arr=(`echo $str | tr '=' ' '`)
+        export ${arr[0]}=${arr[1]}
+        shift
+        ;;
     -h)
         usage
         exit
@@ -126,8 +132,9 @@ if [ -z "$GPUPUNK_EXEC" ]; then
     exit
 fi
 
-if [ ! -z $GPUPUNK_VERBOSE ]; then
+if [ $GPUPUNK_VERBOSE -eq 1 ]; then
     export GPUPUNK_REDIRECT=./gpupunk.log
+    echo "" > ./gpupunk.log
 else
     export GPUPUNK_REDIRECT=/dev/null
 fi
