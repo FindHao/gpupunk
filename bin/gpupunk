@@ -14,8 +14,6 @@ gputrigger_lib_path=${GPUPUNK_PATH}/gputrigger/libgputrigger.so
 libmonitor_path=${GPUPUNK_PATH}/libmonitor/lib/libmonitor.so
 # default analysis mode is mem_page
 export GPUPUNK_ANALYSIS_MODE=5
-# wit libmonitor
-export W_LIBMONITOR=1
 # with drcctprof
 export GPUPUNK_WITH_DRRUN=1
 # with hpcrun
@@ -29,8 +27,6 @@ Usage:
     gvprof [profiling options] [executable] [executable arguments]
     profiling options:
     -h help
-    -libm [yes|no|y|n] 
-        default is yes. This option will enable libmonitor.
     -m [mem_page|value_pattern]
         default is mem_page. 
     -drrun [yes|no|y|n]
@@ -41,6 +37,8 @@ Usage:
         default is no. This option will enable verbose.
     -l <launcher>
         default is none. pass launcher command for execution. (e.g., "mpirun -np 1")
+    -ck <control-knob>
+      control knob values
 EOF
     exit 0
 }
@@ -49,18 +47,6 @@ while test "x$1" != x; do
     arg="$1"
     shift
     case "$arg" in
-    -libm)
-        if [ $1 == "no" ] || [ $1 == "n" ]; then
-            libmonitor_path=
-            export W_LIBMONITOR=0
-        else
-            if [ $1 != "yes" ] && [ $1 != "y" ]; then
-                echo "wrong argument pattern for libmonitor"
-                exit -1
-            fi
-        fi
-        shift
-        ;;
     -m)
         case $1 in
         "mem_page")
@@ -108,7 +94,7 @@ while test "x$1" != x; do
         ;;
     -ck)
         str=$1
-        arr=(`echo $str | tr '=' ' '`)
+        arr=($(echo $str | tr '=' ' '))
         export ${arr[0]}=${arr[1]}
         shift
         ;;
@@ -134,7 +120,7 @@ fi
 
 if [ $GPUPUNK_VERBOSE -eq 1 ]; then
     export GPUPUNK_REDIRECT=./gpupunk.log
-    echo "" > ./gpupunk.log
+    echo "" >./gpupunk.log
 else
     export GPUPUNK_REDIRECT=/dev/null
 fi
@@ -151,9 +137,9 @@ if [ $GPUPUNK_WITH_HPCRUN -eq 1 ]; then
     rm -rf $DATABASE
     HPCRUN=${HPCTOOLKIT_PATH}/bin/hpcrun
     echo "$GPUPUNK_LAUNCHER $HPCRUN -e gpu=nvidia -o $MEASUREMENTS $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
-    $GPUPUNK_LAUNCHER $HPCRUN -e gpu=nvidia -o $MEASUREMENTS $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT
+    $GPUPUNK_LAUNCHER $HPCRUN -e gpu=nvidia -o $MEASUREMENTS $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
     HPCSTRUCT=${HPCTOOLKIT_PATH}/bin/hpcstruct
-    $HPCSTRUCT -j 12 $MEASUREMENTS &>> $GPUPUNK_REDIRECT
+    $HPCSTRUCT -j 12 $MEASUREMENTS &>>$GPUPUNK_REDIRECT
     rm ./cubins ./structs
     ln -s $MEASUREMENTS/cubins ./
     ln -s $MEASUREMENTS/structs ./
@@ -168,9 +154,8 @@ fi
 
 if [ $GPUPUNK_LAUNCHER ]; then
     echo "$GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
-    $GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT
+    $GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
 else
     echo "LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
-    LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT
+    LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
 fi
-
