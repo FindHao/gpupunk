@@ -14,8 +14,8 @@ install_path=$1
 
 if [ ! -d $install_path ]
 then
-    echo "target install path does not exist. "
-    exit -1
+    echo "target install path not exist, will create it"
+    mkdir -p $install_path
 fi
 
 

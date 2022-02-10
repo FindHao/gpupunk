@@ -24,7 +24,7 @@ export GPUPUNK_VERBOSE=0
 usage() {
     cat <<EOF
 Usage:
-    gvprof [profiling options] [executable] [executable arguments]
+    gpupunk [profiling options] [executable] [executable arguments]
     profiling options:
     -h help
     -m [mem_page|value_pattern]
@@ -33,8 +33,8 @@ Usage:
         default is yes. This option will enable drcctprof.
     -hpcrun [yes|no|y|n]
         default is no. This option will enable hpcrun.
-    -v [yes|no|y|n]
-        default is no. This option will enable verbose.
+    -v 
+        This option will enable verbose.
     -l <launcher>
         default is none. pass launcher command for execution. (e.g., "mpirun -np 1")
     -ck <control-knob>
@@ -159,3 +159,4 @@ else
     echo "LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
     LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
 fi
+
