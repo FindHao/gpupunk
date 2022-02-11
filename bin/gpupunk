@@ -151,12 +151,10 @@ if [ $GPUPUNK_WITH_DRRUN -eq 1 ]; then
 else
     DRRUN=
 fi
-
-if [ $GPUPUNK_LAUNCHER ]; then
-    echo "$GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
-    $GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
-else
+if [ -z "$GPUPUNK_LAUNCHER" ]; then
     echo "LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
     LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
+else
+    echo "$GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
+    $GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
 fi
-
