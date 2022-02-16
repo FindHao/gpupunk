@@ -223,14 +223,15 @@ extern "C" __device__ __noinline__
     uint32_t first_laneid = __ffs(active_mask) - 1;
     if (laneid == first_laneid)
     {
-        gpu_patch_record_t *records = (gpu_patch_record_t *)buffer->records;
-        gpu_patch_record_t *record = records + gpu_queue_get(buffer, (buffer->flags & GPU_PATCH_ANALYSIS) != 0);
-        record->pc = pc;
-        record->flat_block_id = get_flat_block_id();
-        record->flat_thread_id = get_flat_thread_id();
-        record->target_pc = targetPc;
-        record->flags = GPU_PATCH_FUNCTION_CALL;
-        gpu_queue_push(buffer);
+      gpu_patch_record_addr_cct_t *records = (gpu_patch_record_addr_cct_t *)buffer->records;
+      gpu_patch_record_addr_cct_t *record = records + gpu_queue_get(buffer, (buffer->flags & GPU_PATCH_ANALYSIS) != 0);
+      record->pc = pc;
+      record->flat_block_id = get_flat_block_id();
+      record->flat_thread_id = get_flat_thread_id();
+      record->target_pc = targetPc;
+      record->flags = GPU_PATCH_FUNCTION_CALL;
+      record->active = active_mask;
+      gpu_queue_push(buffer);
     }
     return SANITIZER_PATCH_SUCCESS;
 }
@@ -245,17 +246,17 @@ extern "C" __device__ __noinline__
     uint32_t laneid = get_laneid();
     uint32_t first_laneid = __ffs(active_mask) - 1;
     //    @todo is this correct for whose cct depth is over 2?
-    // @todo when there are thread divergence, we need to add more information.
     if (laneid == first_laneid)
     {
-        gpu_patch_record_t *records = (gpu_patch_record_t *)buffer->records;
-        gpu_patch_record_t *record = records + gpu_queue_get(buffer, (buffer->flags & GPU_PATCH_ANALYSIS) != 0);
-        record->pc = pc;
-        record->flat_block_id = get_flat_block_id();
-        record->flat_thread_id = get_flat_thread_id();
-        record->target_pc = targetPc;
-        record->flags = GPU_PATCH_FUNCTION_RET;
-        gpu_queue_push(buffer);
+      gpu_patch_record_addr_cct_t *records = (gpu_patch_record_addr_cct_t *)buffer->records;
+      gpu_patch_record_addr_cct_t *record = records + gpu_queue_get(buffer, (buffer->flags & GPU_PATCH_ANALYSIS) != 0);
+      record->pc = pc;
+      record->flat_block_id = get_flat_block_id();
+      record->flat_thread_id = get_flat_thread_id();
+      record->target_pc = targetPc;
+      record->flags = GPU_PATCH_FUNCTION_RET;
+      record->active = active_mask;
+      gpu_queue_push(buffer);
     }
     return SANITIZER_PATCH_SUCCESS;
 }

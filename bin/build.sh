@@ -38,7 +38,7 @@ make -j 12
 make install
 
 cd ${source_path}/gputrigger
-rm -rf build
+rm -rf ${source_path}/gputrigger/build
 mkdir build && cd build
 cmake ..  -DCMAKE_INSTALL_PREFIX=${install_path}/gputrigger -Dgpu_patch_path=${install_path}/gpu-patch
 make -j 16

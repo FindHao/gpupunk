@@ -30,7 +30,7 @@ enum GPUPatchType
   GPU_PATCH_TYPE_DEFAULT = 0,
   GPU_PATCH_TYPE_ADDRESS_PATCH = 1,
   GPU_PATCH_TYPE_ADDRESS_ANALYSIS = 2,
-  GPU_PATCH_CCT = 3,
+  GPU_PATCH_TYPE_ADDRESS_CCT = 3,
   GPU_PATCH_TYPE_COUNT = 4
 };
 
@@ -47,16 +47,18 @@ typedef struct gpu_patch_record {
   uint8_t value[GPU_PATCH_WARP_SIZE][GPU_PATCH_MAX_ACCESS_SIZE];  // STS.128->16 bytes
 } gpu_patch_record_t;
 
-// CCT data
-typedef struct gpu_cct_record
-{
+// Address and CCT
+typedef struct gpu_patch_record_addr_cct{
   uint64_t pc;
   uint64_t target_pc;
   uint32_t active;
   uint32_t flat_thread_id;
   uint32_t flat_block_id;
-  uint32_t flag;
-} gpu_cct_record_t;
+  // GPUPatchFlags
+  uint32_t flags;
+  uint32_t size;
+  uint64_t address[GPU_PATCH_WARP_SIZE];
+} gpu_patch_record_addr_cct_t;
 
 // Address only
 typedef struct gpu_patch_record_address {
