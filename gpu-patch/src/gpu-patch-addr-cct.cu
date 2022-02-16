@@ -31,33 +31,33 @@ static __device__ __forceinline__
 
     // 2. Read memory values
     uint8_t buf[GPU_PATCH_MAX_ACCESS_SIZE];
-    if (new_value == NULL)
-    {
-        // Read operation, old value can be on local memory, shared memory, or global memory
-        if (flags & GPU_PATCH_SHARED)
-        {
-            read_shared_memory(size, (uint32_t)address, buf);
-        }
-        else if (flags & GPU_PATCH_LOCAL)
-        {
-            read_local_memory(size, (uint32_t)address, buf);
-        }
-        else if (flags != SANITIZER_MEMORY_DEVICE_FLAG_FORCE_INT)
-        {
-            read_global_memory(size, (uint64_t)address, buf);
-        }
-    }
-    else
-    {
-        // Write operation, new value is on global memory
-        read_global_memory(size, (uint64_t)new_value, buf);
-    }
+    // if (new_value == NULL)
+    // {
+    //     // Read operation, old value can be on local memory, shared memory, or global memory
+    //     if (flags & GPU_PATCH_SHARED)
+    //     {
+    //         read_shared_memory(size, (uint32_t)address, buf);
+    //     }
+    //     else if (flags & GPU_PATCH_LOCAL)
+    //     {
+    //         read_local_memory(size, (uint32_t)address, buf);
+    //     }
+    //     else if (flags != SANITIZER_MEMORY_DEVICE_FLAG_FORCE_INT)
+    //     {
+    //         read_global_memory(size, (uint64_t)address, buf);
+    //     }
+    // }
+    // else
+    // {
+    //     // Write operation, new value is on global memory
+    //     read_global_memory(size, (uint64_t)new_value, buf);
+    // }
 
-    gpu_patch_record_t *record = NULL;
+    gpu_patch_record_addr_cct_t *record = NULL;
     if (laneid == first_laneid)
     {
         // 3. Get a record
-        gpu_patch_record_t *records = (gpu_patch_record_t *)buffer->records;
+        gpu_patch_record_addr_cct_t *records = (gpu_patch_record_addr_cct_t *)buffer->records;
         record = records + gpu_queue_get(buffer, (buffer->flags & GPU_PATCH_ANALYSIS) != 0);
 
         // 4. Assign basic values
@@ -72,14 +72,14 @@ static __device__ __forceinline__
     __syncwarp(active_mask);
 
     uint64_t r = (uint64_t)record;
-    record = (gpu_patch_record_t *)shfl(r, first_laneid, active_mask);
+    record = (gpu_patch_record_addr_cct_t *)shfl(r, first_laneid, active_mask);
 
     if (record != NULL)
     {
         record->address[laneid] = (uint64_t)address;
         for (uint32_t i = 0; i < size; ++i)
         {
-            record->value[laneid][i] = buf[i];
+            // record->value[laneid][i] = buf[i];
         }
     }
 
@@ -156,15 +156,15 @@ extern "C" __device__ __noinline__
 
     if (laneid == first_laneid)
     {
-        gpu_patch_record_t *records = (gpu_patch_record_t *)buffer->records;
-        gpu_patch_record_t *record = records + gpu_queue_get(buffer, (buffer->flags & GPU_PATCH_ANALYSIS) != 0);
+        gpu_patch_record_addr_cct_t *records = (gpu_patch_record_addr_cct_t *)buffer->records;
+        gpu_patch_record_addr_cct_t *record = records + gpu_queue_get(buffer, (buffer->flags & GPU_PATCH_ANALYSIS) != 0);
 
         record->pc = pc;
         record->flags = GPU_PATCH_BLOCK_EXIT_FLAG;
         record->flat_block_id = get_flat_block_id();
         record->flat_thread_id = get_flat_thread_id();
         record->active = active_mask;
-
+        record->size = 1;
         gpu_queue_push(buffer);
 
         // Finish a bunch of threads
@@ -197,17 +197,65 @@ extern "C" __device__ __noinline__
     if (laneid == first_laneid)
     {
         // Mark block begin
-        gpu_patch_record_t *records = (gpu_patch_record_t *)buffer->records;
-        gpu_patch_record_t *record = records + gpu_queue_get(buffer, (buffer->flags & GPU_PATCH_ANALYSIS) != 0);
+        gpu_patch_record_addr_cct_t *records = (gpu_patch_record_addr_cct_t *)buffer->records;
+        gpu_patch_record_addr_cct_t *record = records + gpu_queue_get(buffer, (buffer->flags & GPU_PATCH_ANALYSIS) != 0);
 
         record->pc = pc;
         record->flags = GPU_PATCH_BLOCK_ENTER_FLAG;
         record->flat_block_id = get_flat_block_id();
         record->flat_thread_id = get_flat_thread_id();
         record->active = active_mask;
-
+        record->size = 1;
         gpu_queue_push(buffer);
     }
 
+    return SANITIZER_PATCH_SUCCESS;
+}
+
+extern "C" __device__ __noinline__
+    SanitizerPatchResult
+    sanitizer_instr_call_callback(void *user_data, uint64_t pc, uint64_t target_pc, uint32_t flags) {
+  gpu_patch_buffer_t *buffer = (gpu_patch_buffer_t *)user_data;
+
+  uint32_t active_mask = __activemask();
+  uint32_t laneid = get_laneid();
+  uint32_t first_laneid = __ffs(active_mask) - 1;
+  if (laneid == first_laneid) {
+    gpu_patch_record_addr_cct_t *records = (gpu_patch_record_addr_cct_t *)buffer->records;
+    gpu_patch_record_addr_cct_t *record = records + gpu_queue_get(buffer, (buffer->flags & GPU_PATCH_ANALYSIS) != 0);
+    record->pc = pc;
+    record->flat_block_id = get_flat_block_id();
+    record->flat_thread_id = get_flat_thread_id();
+    record->target_pc = target_pc;
+    record->flags = GPU_PATCH_FUNCTION_CALL;
+    record->active = active_mask;
+    record->size = 1;
+    gpu_queue_push(buffer);
+  }
+  return SANITIZER_PATCH_SUCCESS;
+}
+
+extern "C" __device__ __noinline__
+    SanitizerPatchResult
+    sanitizer_instr_ret_callback(void *user_data, uint64_t pc)
+{
+    gpu_patch_buffer_t *buffer = (gpu_patch_buffer_t *)user_data;
+
+    uint32_t active_mask = __activemask();
+    uint32_t laneid = get_laneid();
+    uint32_t first_laneid = __ffs(active_mask) - 1;
+    if (laneid == first_laneid)
+    {
+      gpu_patch_record_addr_cct_t *records = (gpu_patch_record_addr_cct_t *)buffer->records;
+      gpu_patch_record_addr_cct_t *record = records + gpu_queue_get(buffer, (buffer->flags & GPU_PATCH_ANALYSIS) != 0);
+      record->pc = pc;
+      record->flat_block_id = get_flat_block_id();
+      record->flat_thread_id = get_flat_thread_id();
+      record->target_pc = 0x0;
+      record->flags = GPU_PATCH_FUNCTION_RET;
+      record->active = active_mask;
+      record->size = 1;
+      gpu_queue_push(buffer);
+    }
     return SANITIZER_PATCH_SUCCESS;
 }
