@@ -30,7 +30,7 @@ static __device__ __forceinline__
     uint32_t first_laneid = __ffs(active_mask) - 1;
 
     // 2. Read memory values
-    uint8_t buf[GPU_PATCH_MAX_ACCESS_SIZE];
+    // uint8_t buf[GPU_PATCH_MAX_ACCESS_SIZE];
     // if (new_value == NULL)
     // {
     //     // Read operation, old value can be on local memory, shared memory, or global memory
