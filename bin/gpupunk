@@ -12,8 +12,8 @@ fi
 
 gputrigger_lib_path=${GPUPUNK_PATH}/gputrigger/libgputrigger.so
 libmonitor_path=${GPUPUNK_PATH}/libmonitor/lib/libmonitor.so
-# default analysis mode is mem_page
-export GPUPUNK_ANALYSIS_MODE=5
+# default analysis mode is cct
+export GPUPUNK_ANALYSIS_MODE=6
 # with drcctprof
 export GPUPUNK_WITH_DRRUN=1
 # with hpcrun
@@ -27,8 +27,8 @@ Usage:
     gpupunk [profiling options] [executable] [executable arguments]
     profiling options:
     -h help
-    -m [mem_page|value_pattern]
-        default is mem_page. 
+    -m [value_pattern|mem_access|cct|cct_mem_access]
+        default is mem_access. 
     -drrun [yes|no|y|n]
         default is yes. This option will enable drcctprof.
     -hpcrun [yes|no|y|n]
@@ -38,7 +38,18 @@ Usage:
     -l <launcher>
         default is none. pass launcher command for execution. (e.g., "mpirun -np 1")
     -ck <control-knob>
-      control knob values
+      control knob values. 
+        -ck <knob1>=<value1> -ck <knob2>=<value2> ...
+        Available knob values are: 
+            GPUPUNK_SANITIZER_GPU_PATCH_RECORD_NUM
+            GPUPUNK_SANITIZER_BUFFER_POOL_SIZE
+            GPUPUNK_SANITIZER_APPROX_LEVEL
+            GPUPUNK_SANITIZER_DEFAULT_TYPE 
+            GPUPUNK_SANITIZER_KERNEL_SAMPLING_FREQUENCY
+            GPUPUNK_SANITIZER_WHITELIST
+            GPUPUNK_SANITIZER_BLACKLIST
+            
+      gputrigger/include/control-knob.h
 EOF
     exit 0
 }
@@ -49,11 +60,17 @@ while test "x$1" != x; do
     case "$arg" in
     -m)
         case $1 in
-        "mem_page")
+        "mem_access")
             export GPUPUNK_ANALYSIS_MODE=5
             ;;
         "value_pattern")
             export GPUPUNK_ANALYSIS_MODE=3
+            ;;
+        "cct")
+            export GPUPUNK_ANALYSIS_MODE=6
+            ;;
+        "cct_mem_access")
+            export GPUPUNK_ANALYSIS_MODE=7
             ;;
         *)
             export GPUPUNK_ANALYSIS_MODE=5
