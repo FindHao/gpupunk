@@ -48,8 +48,9 @@ Usage:
             GPUPUNK_SANITIZER_KERNEL_SAMPLING_FREQUENCY
             GPUPUNK_SANITIZER_WHITELIST
             GPUPUNK_SANITIZER_BLACKLIST
-            
       gputrigger/include/control-knob.h
+    -w <whitelist.txt>
+        kernel whitelist for instrumentation. 
 EOF
     exit 0
 }
@@ -107,6 +108,10 @@ while test "x$1" != x; do
         ;;
     -l)
         export GPUPUNK_LAUNCHER="$1"
+        shift
+        ;;
+    -w)
+        export GPUPUNK_WHITELIST="$1"
         shift
         ;;
     -ck)
