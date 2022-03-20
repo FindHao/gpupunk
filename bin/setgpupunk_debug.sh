@@ -1,6 +1,9 @@
+# set cuda enviroment
+source ~/setenvs/setcuda11.2.sh
+# change to your install path
+export GPUPUNK_PATH=/home/yhao24/opt/gpupunk
 
 export ENABLE_GPUTRIGGER=1
-export GPUPUNK_PATH=/home/yhao24/opt/gpupunk
 export GPUPATCH_PATH=${GPUPUNK_PATH}/gpu-patch/
 export REDSHOW_PATH=${GPUPUNK_PATH}/redshow
 export GPUTRIGGER_PATH=${GPUPUNK_PATH}/gputrigger
