@@ -20,7 +20,8 @@ export GPUPUNK_WITH_DRRUN=1
 export GPUPUNK_WITH_HPCRUN=0
 # with detail log
 export GPUPUNK_VERBOSE=0
-
+# filter cubins
+export GPUPUNK_CUBIN_FILTER=1
 usage() {
     cat <<EOF
 Usage:
@@ -46,11 +47,15 @@ Usage:
             GPUPUNK_SANITIZER_APPROX_LEVEL
             GPUPUNK_SANITIZER_DEFAULT_TYPE 
             GPUPUNK_SANITIZER_KERNEL_SAMPLING_FREQUENCY
+            GPUPUNK_SANITIZER_BLOCK_SAMPLEING_FREQUENCY
             GPUPUNK_SANITIZER_WHITELIST
             GPUPUNK_SANITIZER_BLACKLIST
       gputrigger/include/control-knob.h
     -w <whitelist.txt>
         kernel whitelist for instrumentation. 
+    -cubin_filter [yes|no|y|n]
+        default is yes. This option will enable cubin filter.
+
 EOF
     exit 0
 }
@@ -103,6 +108,17 @@ while test "x$1" != x; do
         fi
         shift
         ;;
+    -cubin_filter)
+        if [ $1 == "no" ] || [ $1 == "n" ]; then
+            export GPUPUNK_CUBIN_FILTER=0
+        else
+            if [ $1 != "yes" ] && [ $1 != "y" ]; then
+                echo "wrong argument pattern for -cubin_filter"
+                exit -1
+            fi
+        fi
+        shift
+        ;;
     -v)
         export GPUPUNK_VERBOSE=1
         ;;
@@ -147,25 +163,30 @@ else
     export GPUPUNK_REDIRECT=/dev/null
 fi
 
-if [ $GPUPUNK_WITH_HPCRUN -eq 1 ]; then
-    if [ -z $HPCTOOLKIT_PATH ]; then
-        echo "HPCTOOLKIT_PATH is not set."
-        exit -1
-    fi
-    MEASUREMENTS=gpupunk-measurements
-    DATABASE=gpupunk-database
-    echo "Make sure $MEASUREMENTS and $DATABASE is clean"
-    rm -rf $MEASUREMENTS
-    rm -rf $DATABASE
-    HPCRUN=${HPCTOOLKIT_PATH}/bin/hpcrun
-    echo "$GPUPUNK_LAUNCHER $HPCRUN -e gpu=nvidia -o $MEASUREMENTS $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
-    $GPUPUNK_LAUNCHER $HPCRUN -e gpu=nvidia -o $MEASUREMENTS $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
-    HPCSTRUCT=${HPCTOOLKIT_PATH}/bin/hpcstruct
-    $HPCSTRUCT -j 12 $MEASUREMENTS &>>$GPUPUNK_REDIRECT
-    rm ./cubins ./structs
-    ln -s $MEASUREMENTS/cubins ./
-    ln -s $MEASUREMENTS/structs ./
+if [ $GPUPUNK_CUBIN_FILTER -eq 1 ]; then
+    rm -rf ./cubins
+    LD_PRELOAD=${GPUPUNK_PATH}/cubin_filter/libcubin_filter.so $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
 fi
+
+# if [ $GPUPUNK_WITH_HPCRUN -eq 1 ]; then
+#     if [ -z $HPCTOOLKIT_PATH ]; then
+#         echo "HPCTOOLKIT_PATH is not set."
+#         exit -1
+#     fi
+#     MEASUREMENTS=gpupunk-measurements
+#     DATABASE=gpupunk-database
+#     echo "Make sure $MEASUREMENTS and $DATABASE is clean"
+#     rm -rf $MEASUREMENTS
+#     rm -rf $DATABASE
+#     HPCRUN=${HPCTOOLKIT_PATH}/bin/hpcrun
+#     echo "$GPUPUNK_LAUNCHER $HPCRUN -e gpu=nvidia -o $MEASUREMENTS $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
+#     $GPUPUNK_LAUNCHER $HPCRUN -e gpu=nvidia -o $MEASUREMENTS $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
+#     HPCSTRUCT=${HPCTOOLKIT_PATH}/bin/hpcstruct
+#     $HPCSTRUCT -j 12 $MEASUREMENTS &>>$GPUPUNK_REDIRECT
+#     rm ./cubins ./structs
+#     ln -s $MEASUREMENTS/cubins ./
+#     ln -s $MEASUREMENTS/structs ./
+# fi
 
 if [ $GPUPUNK_WITH_DRRUN -eq 1 ]; then
     # DRRUN="${DRCCTPROF_PATH}/bin64/drrun -dumpcore_mask 0x837f  -t drcctlib_cpu_gpu_memory --"

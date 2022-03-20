@@ -52,6 +52,12 @@ cd ${source_path}/drcctprof_clients
 ./build_clean.sh ; ./build.sh
 cp -r ./DrCCTProf/build ${install_path}/drcctprof
 
+cd ${source_path}/cubin_filter
+rm -rf ${source_path}/cubin_filter/build
+mkdir build && cd build
+cmake ..  -DCMAKE_INSTALL_PREFIX=${install_path}/cubin_filter 
+make -j 16
+make install -j 4
 
 cd ${source_path}
 # cp -rf ./bin ${install_path}/
