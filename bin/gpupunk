@@ -28,7 +28,7 @@ Usage:
     gpupunk [profiling options] [executable] [executable arguments]
     profiling options:
     -h help
-    -m [value_pattern|mem_access|cct|cct_mem_access]
+    -m [value_pattern|mem_access|cct|cct_mem_access|page_sharing]
         default is mem_access. 
     -drrun [yes|no|y|n]
         default is yes. This option will enable drcctprof.
