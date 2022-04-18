@@ -78,6 +78,9 @@ while test "x$1" != x; do
         "cct_mem_access")
             export GPUPUNK_ANALYSIS_MODE=7
             ;;
+        "page_sharing")
+            export GPUPUNK_ANALYSIS_MODE=8
+            ;;
         *)
             export GPUPUNK_ANALYSIS_MODE=5
             ;;
