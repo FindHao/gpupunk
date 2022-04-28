@@ -1,46 +1,41 @@
+#include <cub/cub.cuh>
+
 #include "gpu-patch.h"
 #include "gpu-queue.h"
 #include "utils.h"
 
-#include <cub/cub.cuh>
-
 #define GPU_ANALYSIS_DEBUG 0
 
 #if GPU_ANALYSIS_DEBUG
-#define PRINT(...) \
- if (threadIdx.x == 0 && blockIdx.x == 0) { \
-   printf(__VA_ARGS__); \
- } 
+#define PRINT(...)                           \
+  if (threadIdx.x == 0 && blockIdx.x == 0) { \
+    printf(__VA_ARGS__);                     \
+  }
 #define PRINT_ALL(...) \
   printf(__VA_ARGS__)
-#define PRINT_RECORDS(buffer) \
-  __syncthreads(); \
-  if (threadIdx.x == 0) { \
-    gpu_patch_analysis_address_t *records = (gpu_patch_analysis_address_t *)buffer->records; \
-    for (uint32_t i = 0; i < buffer->head_index; ++i) { \
+#define PRINT_RECORDS(buffer)                                                                                               \
+  __syncthreads();                                                                                                          \
+  if (threadIdx.x == 0) {                                                                                                   \
+    gpu_patch_analysis_address_t *records = (gpu_patch_analysis_address_t *)buffer->records;                                \
+    for (uint32_t i = 0; i < buffer->head_index; ++i) {                                                                     \
       printf("gpu analysis-> merged <%p, %p> (%p)\n", records[i].start, records[i].end, records[i].end - records[i].start); \
-    } \
-  } \
-  __syncthreads(); 
+    }                                                                                                                       \
+  }                                                                                                                         \
+  __syncthreads();
 #else
 #define PRINT(...)
 #define PRINT_ALL(...)
-#define PRINT_RECORDS(buffer) 
+#define PRINT_RECORDS(buffer)
 #endif
 
 #define MAX_U64 (0xFFFFFFFFFFFFFFFF)
 #define MAX_U32 (0xFFFFFFFF)
 
-static
-__device__
-void
-interval_compact
-(
- gpu_patch_buffer_t *patch_buffer,
- gpu_patch_buffer_t *read_buffer,
- gpu_patch_buffer_t *write_buffer
-)
-{
+static __device__ void
+interval_compact(
+    gpu_patch_buffer_t *patch_buffer,
+    gpu_patch_buffer_t *read_buffer,
+    gpu_patch_buffer_t *write_buffer) {
   auto warp_index = blockDim.x / GPU_PATCH_WARP_SIZE * blockIdx.x + threadIdx.x / GPU_PATCH_WARP_SIZE;
   auto num_warps = blockDim.x / GPU_PATCH_WARP_SIZE;
   auto laneid = get_laneid();
@@ -49,8 +44,8 @@ interval_compact
   gpu_patch_analysis_address_t *write_records = (gpu_patch_analysis_address_t *)write_buffer->records;
 
   PRINT("gpu analysis->full: %u, analysis: %u, head_index: %u, tail_index: %u, size: %u, num_threads: %u",
-    patch_buffer->full, patch_buffer->analysis, patch_buffer->head_index, patch_buffer->tail_index,
-    patch_buffer->size, patch_buffer->num_threads)
+        patch_buffer->full, patch_buffer->analysis, patch_buffer->head_index, patch_buffer->tail_index,
+        patch_buffer->size, patch_buffer->num_threads)
 
   for (auto iter = warp_index; iter < patch_buffer->head_index; iter += num_warps) {
     gpu_patch_record_address_t *record = records + iter;
@@ -70,14 +65,14 @@ interval_compact
     interval_start = shfl_up(address_start, 1);
 
     PRINT_ALL("gpu_analysis <%d, %d>->active: %x, interval_start: %p, address_start: %p\n",
-      blockIdx.x, threadIdx.x, record->active, interval_start, address_start);
+              blockIdx.x, threadIdx.x, record->active, interval_start, address_start);
 
     int32_t interval_start_point = 0;
     if (first_laneid == laneid || (address_start != 0 && (interval_start + record->size < address_start))) {
       interval_start_point = 1;
     }
 
-    // In the worst case, a for loop takes 31 * 3 steps (shift + compare + loop) to find 
+    // In the worst case, a for loop takes 31 * 3 steps (shift + compare + loop) to find
     // the right end. The following procedure find the end with ~10 instructions.
     // Find the end position
     // 00100010b
@@ -87,7 +82,7 @@ interval_compact
     b = ballot(interval_start_point);
 
     PRINT_ALL("gpu_analysis <%d, %d>->ballot: %x, interval_start_point: %d, address_start: %p\n",
-      blockIdx.x, threadIdx.x, b, interval_start_point, address_start);
+              blockIdx.x, threadIdx.x, b, interval_start_point, address_start);
 
     // 00100010b
     // b_rev
@@ -96,11 +91,11 @@ interval_compact
     //  x
     // laneid_rev = 8 - 1 - 1 = 6
     uint32_t b_rev = brev(b);
-    uint32_t laneid_rev = GPU_PATCH_WARP_SIZE - laneid - 1; 
+    uint32_t laneid_rev = GPU_PATCH_WARP_SIZE - laneid - 1;
     uint32_t laneid_rev_mask = (1 << laneid_rev) - 1;
 
     PRINT_ALL("gpu_analysis <%d, %d>->b_rev: %x, laneid_rev: %x, laneid_rev_mask: %x\n",
-      blockIdx.x, threadIdx.x, b_rev, laneid_rev, laneid_rev_mask);
+              blockIdx.x, threadIdx.x, b_rev, laneid_rev, laneid_rev_mask);
 
     // 00000100b
     // 76543210
@@ -118,48 +113,42 @@ interval_compact
     }
     uint64_t address_end = address_start + record->size;
     address_end = shfl(address_end, p);
-    
+
     PRINT_ALL("gpu_analysis <%d, %d>->p: %d, address_start: %p, address_end: %p\n",
-      blockIdx.x, threadIdx.x, p, address_start, address_end);
+              blockIdx.x, threadIdx.x, p, address_start, address_end);
 
     if (interval_start_point == 1) {
       gpu_patch_analysis_address_t *address_record = NULL;
 
       if (record->flags & GPU_PATCH_READ) {
-        address_record = read_records + gpu_queue_get(read_buffer); 
+        address_record = read_records + gpu_queue_get(read_buffer);
         address_record->start = address_start;
         address_record->end = address_end;
 
         PRINT_ALL("gpu_analysis <%d, %d>->push address_start: %p, address_end: %p\n",
-          blockIdx.x, threadIdx.x, address_start, address_end);
+                  blockIdx.x, threadIdx.x, address_start, address_end);
         gpu_queue_push(read_buffer);
-      } 
-      
+      }
+
       if (record->flags & GPU_PATCH_WRITE) {
-        address_record = write_records + gpu_queue_get(write_buffer); 
+        address_record = write_records + gpu_queue_get(write_buffer);
         address_record->start = address_start;
         address_record->end = address_end;
 
         PRINT_ALL("gpu_analysis <%d, %d>->push address_start: %p, address_end: %p\n",
-          blockIdx.x, threadIdx.x, address_start, address_end);
+                  blockIdx.x, threadIdx.x, address_start, address_end);
         gpu_queue_push(write_buffer);
-      } 
+      }
     }
   }
 }
 
-
-template<int THREADS, int ITEMS>
-static
-__device__
-int
-interval_merge_impl
-(
- uint64_t *d_in,
- uint64_t *d_out,
- uint32_t valid_items
-)
-{
+template <int THREADS, int ITEMS>
+static __device__ int
+interval_merge_impl(
+    uint64_t *d_in,
+    uint64_t *d_out,
+    uint32_t valid_items) {
   // Specialize BlockLoad type for our thread block (uses warp-striped loads for coalescing, then transposes in shared memory to a blocked arrangement)
   typedef cub::BlockLoad<uint64_t, THREADS, ITEMS, cub::BLOCK_LOAD_WARP_TRANSPOSE> BlockLoadT;
   // Specialize BlockStore type for our thread block (uses warp-striped loads for coalescing, then transposes in shared memory to a blocked arrangement)
@@ -171,12 +160,11 @@ interval_merge_impl
   // Specialize BlockDiscontinuity for a 1D block of 128 threads on type int
   typedef cub::BlockDiscontinuity<int, THREADS> BlockDiscontinuity;
   // Shared memory
-  __shared__ union TempStorage
-  {
-    typename BlockLoadT::TempStorage         load;
-    typename BlockStoreT::TempStorage        store;
-    typename BlockRadixSortT::TempStorage    sort;
-    typename BlockScanT::TempStorage         scan;
+  __shared__ union TempStorage {
+    typename BlockLoadT::TempStorage load;
+    typename BlockStoreT::TempStorage store;
+    typename BlockRadixSortT::TempStorage sort;
+    typename BlockScanT::TempStorage scan;
     typename BlockDiscontinuity::TempStorage disc;
   } temp_storage;
 
@@ -268,16 +256,10 @@ interval_merge_impl
   return aggregate;
 }
 
-
-template<int THREADS, int ITEMS>
-static
-__device__
-void
-interval_merge
-(
- gpu_patch_buffer_t *buffer
-)
-{
+template <int THREADS, int ITEMS>
+static __device__ void
+interval_merge(
+    gpu_patch_buffer_t *buffer) {
   uint32_t cur_index = 0;
   uint32_t items = 0;
   uint32_t tile_size = THREADS * ITEMS;
@@ -318,24 +300,19 @@ interval_merge
   }
 }
 
-
 // TODO(Keren): multiple buffers, no need to wait
-extern "C"
-__launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
-__global__
-void
-gpu_analysis_interval_merge
-(
- gpu_patch_buffer_t *buffer,
- gpu_patch_buffer_t *read_buffer,
- gpu_patch_buffer_t *write_buffer
-)
-{
+extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
+    __global__
+    void gpu_analysis_interval_merge(
+        gpu_patch_buffer_t *buffer,
+        gpu_patch_buffer_t *read_buffer,
+        gpu_patch_buffer_t *write_buffer) {
   // Continue processing until CPU notifies analysis is done
   while (true) {
     // Wait until GPU notifies buffer is full. i.e., analysis can begin process.
     // Block sampling is not allowed
-    while (buffer->analysis == 0 && atomic_load(&buffer->num_threads) != 0);
+    while (buffer->analysis == 0 && atomic_load(&buffer->num_threads) != 0)
+      ;
 
     if (atomic_load(&buffer->num_threads) == 0) {
       // buffer->analysis must be 0
@@ -399,3 +376,4 @@ gpu_analysis_interval_merge
     atomic_store_system(&read_buffer->num_threads, (uint32_t)0);
   }
 }
+
