@@ -1,9 +1,7 @@
 #!/bin/bash
 
-if [ $# -lt 1 ];then
-    echo "usage: bin/build.sh target_install_path"
-    exit -1
-fi
+# usage: install_path=/path/to/install CUDA_PATH=/scratch/opt/cuda-11.8 ./install.sh
+
 current_path=$(dirname $(readlink -f $0))
 # if current_path ends with gpupunk/bin, then source_path is gpupunk
 if [[ $current_path =~ .*gpupunk/bin$ ]];then
@@ -38,15 +36,20 @@ function check_status {
 
 echo "GPUPUNK-> install dependencies"
 cd $install_path
-git clone --depth 1 https://github.com/spack/spack.git
+# if spack doesn't exist, then clone it
+if [ ! -d spack ];then
+    git clone --depth 1 https://github.com/spack/spack.git
+fi
 export SPACK_ROOT=$(pwd)/spack
 source ${SPACK_ROOT}/share/spack/setup-env.sh
 # This is necessary and used when statically compiling redshow.
 # mbedtls has to older than 2.28.0
-spack install boost@1.76.0 mbedtls@2.28.0 libs=shared elfutils@0.186
+# spack install boost@1.76.0 mbedtls@2.28.0 libs=shared elfutils@0.186
+# spack install boost mbedtls libs=shared elfutils
 check_status "spack install"
 # TODO: find a better solution for those packages' installation
-spack load boost@1.76.0 mbedtls@2.28.0  elfutils@0.186
+# spack load boost@1.76.0 mbedtls@2.28.0  elfutils@0.186
+spack load boost mbedtls elfutils
 
 # Find spack and boost dir
 B=$(spack find --path boost | tail -n 1 | cut -d ' ' -f 3)
@@ -67,16 +70,16 @@ cd ${source_path}/libmonitor
 make clean
 ./configure --prefix=${install_path}/libmonitor/
 make -j 12
-make install
 check_status "libmonitor install"
+make install
 
 cd ${source_path}/gputrigger
 rm -rf ${source_path}/gputrigger/build
 mkdir build && cd build
-cmake ..  -DCMAKE_INSTALL_PREFIX=${install_path}/gputrigger -Dgpu_patch_path=${install_path}/gpu-patch
+cmake ..  -DCMAKE_INSTALL_PREFIX=${install_path}/gputrigger -Dgpu_patch_path=${install_path}/gpu-patch -Dredshow_path=${install_path}/redshow 
 make -j 16
-make install -j 4
 check_status "gputrigger install"
+make install -j 4
 
 export ENABLE_GPUTRIGGER=1
 export REDSHOW_PATH=${install_path}/redshow
