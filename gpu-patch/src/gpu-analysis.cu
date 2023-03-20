@@ -377,3 +377,10 @@ extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
   }
 }
 
+extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
+    __global__
+    void gpu_preprocessor_decompose_records(
+        gpu_patch_buffer_t *buffer,
+        uint64_t *) {
+
+}
