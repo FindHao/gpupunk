@@ -1,5 +1,5 @@
 # set cuda enviroment
-source ~/setenvs/setcuda11.2.sh
+# source ~/setenvs/setcuda11.2.sh
 # change to your install path
 export GPUPUNK_PATH=/home/yhao24/opt/gpupunk
 
