@@ -34,13 +34,23 @@ else ()
 endif ()
 enable_language(CUDA)
 
+include(FindLibElf.cmake)
+include(FindMbedTLS.cmake)
+
+message(INFO "==========")
+message(STATUS ${LIBELF_INCLUDE_DIRS})
+message(STATUS ${LIBELF_LIBRARIES_PATH})
+message(STATUS ${MBEDTLS_INCLUDE_DIRS})
+message(STATUS ${MBEDCRYPTO_LIBRARY_PATH})
 
 set(SANITIZER_PATH ${CUDAToolkit_TARGET_DIR}/compute-sanitizer)
-
+find_library(mbedcrypto_lib NAMES libmbedcrypto.so)
 include_directories(${SANITIZER_PATH}/include/
         ${CUDAToolkit_TARGET_DIR}/include/
         ${CMAKE_CURRENT_LIST_DIR}/include/
         ${CMAKE_CURRENT_LIST_DIR}/src/
+        ${LIBELF_INCLUDE_DIRS}
+        ${MBEDTLS_INCLUDE_DIRS}
         )
 message(INFO ${SANITIZER_PATH} ${CUDAToolkit_NVCC_EXECUTABLE})
 add_link_options(-L${SANITIZER_PATH} -fPIC -shared)
@@ -48,6 +58,11 @@ add_link_options(-L${SANITIZER_PATH} -fPIC -shared)
 aux_source_directory(${CMAKE_CURRENT_LIST_DIR}/ cubin_filter_src)
 file(GLOB cubin_filter_head CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/*.h" )
 
+
+
+add_link_options(-L${LIBELF_LIBRARIES_PATH} -L${MBEDTLS_LIBRARY_PATH} -L${MBEDCRYPTO_LIBRARY_PATH})
+
+message(INFO ${mbedcrypto_lib})
 
 add_library(cubin_filter SHARED ${cubin_filter_src} )
 
