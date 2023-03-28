@@ -42,7 +42,8 @@ if [ ! -d spack ];then
 fi
 export SPACK_ROOT=$(pwd)/spack
 source ${SPACK_ROOT}/share/spack/setup-env.sh
-spack install boost mbedtls libs=shared elfutils
+# Fix the versions of dependencies
+spack install boost@1.81.0 mbedtls@3.3.0 libs=shared elfutils@0.189
 check_status "spack install"
 spack load boost mbedtls elfutils
 
