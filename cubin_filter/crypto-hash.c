@@ -122,7 +122,7 @@ crypto_hash_compute
   memset(hash, 0, hash_length); 
 
   // compute an MD5 hash of input
-  mbedtls_md5_ret(input, input_length, hash);
+  mbedtls_md5(input, input_length, hash);
 
   return 0;
 }

@@ -42,13 +42,8 @@ if [ ! -d spack ];then
 fi
 export SPACK_ROOT=$(pwd)/spack
 source ${SPACK_ROOT}/share/spack/setup-env.sh
-# This is necessary and used when statically compiling redshow.
-# mbedtls has to older than 2.28.0
-# spack install boost@1.76.0 mbedtls@2.28.0 libs=shared elfutils@0.186
 spack install boost mbedtls libs=shared elfutils
 check_status "spack install"
-# TODO: find a better solution for those packages' installation
-# spack load boost@1.76.0 mbedtls@2.28.0  elfutils@0.186
 spack load boost mbedtls elfutils
 
 # Find spack and boost dir

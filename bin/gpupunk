@@ -22,6 +22,10 @@ export GPUPUNK_WITH_HPCRUN=0
 export GPUPUNK_VERBOSE=0
 # filter cubins
 export GPUPUNK_CUBIN_FILTER=1
+
+export SANITIZER_DISABLE_PARALLEL_LAUNCHES=1
+
+
 usage() {
     cat <<EOF
 Usage:

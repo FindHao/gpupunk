@@ -34,12 +34,10 @@ else ()
 endif ()
 enable_language(CUDA)
 
-include(FindLibElf.cmake)
+
 include(FindMbedTLS.cmake)
 
 message(INFO "==========")
-message(STATUS ${LIBELF_INCLUDE_DIRS})
-message(STATUS ${LIBELF_LIBRARIES_PATH})
 message(STATUS ${MBEDTLS_INCLUDE_DIRS})
 message(STATUS ${MBEDCRYPTO_LIBRARY_PATH})
 
@@ -49,7 +47,6 @@ include_directories(${SANITIZER_PATH}/include/
         ${CUDAToolkit_TARGET_DIR}/include/
         ${CMAKE_CURRENT_LIST_DIR}/include/
         ${CMAKE_CURRENT_LIST_DIR}/src/
-        ${LIBELF_INCLUDE_DIRS}
         ${MBEDTLS_INCLUDE_DIRS}
         )
 message(INFO ${SANITIZER_PATH} ${CUDAToolkit_NVCC_EXECUTABLE})
@@ -60,7 +57,7 @@ file(GLOB cubin_filter_head CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/*.h" )
 
 
 
-add_link_options(-L${LIBELF_LIBRARIES_PATH} -L${MBEDTLS_LIBRARY_PATH} -L${MBEDCRYPTO_LIBRARY_PATH})
+add_link_options(-L${MBEDTLS_LIBRARY_PATH} -L${MBEDCRYPTO_LIBRARY_PATH})
 
 message(INFO ${mbedcrypto_lib})
 
