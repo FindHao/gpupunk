@@ -163,16 +163,28 @@ if [ -z "$GPUPUNK_EXEC" ]; then
     exit
 fi
 
+var_date=$(date +'%Y%m%d%H%M')
+
 if [ $GPUPUNK_VERBOSE -eq 1 ]; then
-    export GPUPUNK_REDIRECT=./gpupunk.log
-    echo "" >./gpupunk.log
+    tmp_file_name=$(basename $GPUPUNK_EXEC)
+    export GPUPUNK_REDIRECT=./gpupunk_${tmp_file_name}_${var_date}.log
+    echo "" > $GPUPUNK_REDIRECT
 else
     export GPUPUNK_REDIRECT=/dev/null
 fi
 
+# check if the previous command is successful
+function check_status {
+    if [ $? -ne 0 ];then
+        echo "GPUPUNK-> $1 failed"
+        exit -1
+    fi
+}
+
 if [ $GPUPUNK_CUBIN_FILTER -eq 1 ]; then
     rm -rf ./cubins
-    LD_PRELOAD=${GPUPUNK_PATH}/cubin_filter/libcubin_filter.so $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
+    LD_PRELOAD=${GPUPUNK_PATH}/cubin_filter/libcubin_filter.so $GPUPUNK_EXEC $GPUPUNK_ARGS  &>>$GPUPUNK_REDIRECT 2>&1
+    check_status "cubin_filter"
 fi
 
 # if [ $GPUPUNK_WITH_HPCRUN -eq 1 ]; then
@@ -202,9 +214,9 @@ else
     DRRUN=
 fi
 if [ -z "$GPUPUNK_LAUNCHER" ]; then
-    echo "LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
-    LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
+    echo "LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT 2>&1"
+    LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT 2>&1
 else
-    echo "$GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT"
-    $GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT
+    echo "$GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>> $GPUPUNK_REDIRECT 2>&1"
+    $GPUPUNK_LAUNCHER -x LD_PRELOAD=${gputrigger_lib_path}:${libmonitor_path} $DRRUN $GPUPUNK_EXEC $GPUPUNK_ARGS &>>$GPUPUNK_REDIRECT 2>&1
 fi
