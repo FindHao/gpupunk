@@ -18,6 +18,7 @@ CUDA_PATH=${CUDA_PATH:-/usr/local/cuda}
 if [ ! -d $CUDA_PATH ]
 then
     echo "CUDA_PATH not exist"
+    exit 1
 fi
 
 echo "Your source code path is " $source_path
@@ -85,13 +86,13 @@ cd ${source_path}/drcctprof_clients
 cp -r ./DrCCTProf/build ${install_path}/drcctprof
 check_status "drcctprof install"
 
-cd ${source_path}/cubin_filter
-rm -rf ${source_path}/cubin_filter/build
-mkdir build && cd build
-cmake ..  -DCMAKE_INSTALL_PREFIX=${install_path}/cubin_filter 
-make -j 16
-make install -j 4
-check_status "cubin_filter install"
+# cd ${source_path}/cubin_filter
+# rm -rf ${source_path}/cubin_filter/build
+# mkdir build && cd build
+# cmake ..  -DCMAKE_INSTALL_PREFIX=${install_path}/cubin_filter 
+# make -j 16
+# make install -j 4
+# check_status "cubin_filter install"
 
 cd ${source_path}
 # cp -rf ./bin ${install_path}/

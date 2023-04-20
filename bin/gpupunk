@@ -176,13 +176,12 @@ fi
 # check if the previous command is successful
 function check_status {
     if [ $? -ne 0 ];then
-        echo "GPUPUNK-> $1 failed"
+        echo "GPUPUNK-> $1 failed when checking status."
         exit -1
     fi
 }
 
 if [ $GPUPUNK_CUBIN_FILTER -eq 1 ]; then
-    rm -rf ./cubins
     LD_PRELOAD=${GPUPUNK_PATH}/cubin_filter/libcubin_filter.so $GPUPUNK_EXEC $GPUPUNK_ARGS  &>>$GPUPUNK_REDIRECT 2>&1
     check_status "cubin_filter"
 fi
