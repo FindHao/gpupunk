@@ -22,8 +22,8 @@ then
 fi
 
 echo "Your source code path is " $source_path
-echo "Your install path is " $install_path
-echo "Your cuda path is " $CUDA_PATH
+echo "Your install path is     " $install_path
+echo "Your cuda path is        " $CUDA_PATH
 
 
 # check if the previous command is successful
