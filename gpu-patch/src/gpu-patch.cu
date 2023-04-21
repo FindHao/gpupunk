@@ -36,11 +36,12 @@ static __device__ __forceinline__
         // Read operation, old value can be on local memory, shared memory, or global memory
         if (flags & GPU_PATCH_SHARED)
         {
-            read_shared_memory(size, (uint32_t)address, buf);
+            // hidden type conversion, uintptr_t -> uint32
+          read_shared_memory(size, (uintptr_t)address, buf);
         }
         else if (flags & GPU_PATCH_LOCAL)
         {
-            read_local_memory(size, (uint32_t)address, buf);
+          read_local_memory(size, (uintptr_t)address, buf);
         }
         else if (flags != SANITIZER_MEMORY_DEVICE_FLAG_FORCE_INT)
         {

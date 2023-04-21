@@ -86,20 +86,18 @@ cd ${source_path}/drcctprof_clients
 cp -r ./DrCCTProf/build ${install_path}/drcctprof
 check_status "drcctprof install"
 
-# cd ${source_path}/cubin_filter
-# rm -rf ${source_path}/cubin_filter/build
-# mkdir build && cd build
-# cmake ..  -DCMAKE_INSTALL_PREFIX=${install_path}/cubin_filter 
-# make -j 16
-# make install -j 4
-# check_status "cubin_filter install"
+cd ${source_path}/cubin_filter
+rm -rf ${source_path}/cubin_filter/build
+mkdir build && cd build
+cmake ..  -DCMAKE_INSTALL_PREFIX=${install_path}/cubin_filter 
+make -j 16
+make install -j 4
+check_status "cubin_filter install"
 
 cd ${source_path}
-# cp -rf ./bin ${install_path}/
 mkdir ${install_path}/bin
-# @FindHao TODO: change to copy before final release
-if [ -f ${install_path}/bin/gpupunk ];then
-    rm ${install_path}/bin/gpupunk
+if [ -f ${install_path}/bin ];then
+    rm ${install_path}/bin/*
 fi
-ln -s ${source_path}/bin/gpupunk ${install_path}/bin/gpupunk
+copy ${source_path}/bin/* ${install_path}/bin/*
 
