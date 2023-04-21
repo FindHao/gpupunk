@@ -21,10 +21,11 @@ then
     exit 1
 fi
 
-echo "Your source code path is " $source_path
-echo "Your install path is     " $install_path
-echo "Your cuda path is        " $CUDA_PATH
-
+echo "===install gpupunk==="
+echo "Source code path is " $source_path
+echo "Install path is     " $install_path
+echo "CUDA path is        " $CUDA_PATH
+echo "======================"
 
 # check if the previous command is successful
 function check_status {
@@ -53,16 +54,19 @@ B=$(spack find --path boost | tail -n 1 | cut -d ' ' -f 3)
 S=${B%/*}
 echo "GPUPUNK-> boost install path is " $B
 
+# compile and install gpu-patch
 cd ${source_path}/gpu-patch
 make clean
 make PREFIX=${install_path}/gpu-patch CUDA_PATH=$CUDA_PATH install -j 4
 check_status "gpu-patch install"
 
+# compile and install redshow
 cd  ${source_path}/redshow
 make clean
 make PREFIX=${install_path}/redshow BOOST_DIR=$B GPU_PATCH_DIR=${install_path}/gpu-patch DEBUG=1  STATIC_CPP=1 install -j 12 -f Makefile.static
 check_status "redshow install"
 
+# compile and install libmonitor
 cd ${source_path}/libmonitor
 make clean
 ./configure --prefix=${install_path}/libmonitor/
@@ -70,6 +74,7 @@ make -j 12
 check_status "libmonitor install"
 make install
 
+# compile and install gputrigger
 cd ${source_path}/gputrigger
 rm -rf ${source_path}/gputrigger/build
 mkdir build && cd build
@@ -78,6 +83,7 @@ make -j 16
 check_status "gputrigger install"
 make install -j 4
 
+# compile and install drcctlib
 export ENABLE_GPUTRIGGER=1
 export REDSHOW_PATH=${install_path}/redshow
 export GPUPATCH_PATH=${install_path}/gpu-patch
@@ -86,6 +92,7 @@ cd ${source_path}/drcctprof_clients
 cp -r ./DrCCTProf/build ${install_path}/drcctprof
 check_status "drcctprof install"
 
+# compile and install cubin_filter
 cd ${source_path}/cubin_filter
 rm -rf ${source_path}/cubin_filter/build
 mkdir build && cd build
@@ -94,10 +101,13 @@ make -j 16
 make install -j 4
 check_status "cubin_filter install"
 
+# update the run scripts
 cd ${source_path}
-mkdir ${install_path}/bin
-if [ -f ${install_path}/bin ];then
-    rm ${install_path}/bin/*
+if [ -d "${install_path}/bin" ];then
+    rm -f ${install_path}/bin/*
+else
+    mkdir ${install_path}/bin
 fi
-copy ${source_path}/bin/* ${install_path}/bin/*
+cp ${source_path}/bin/gpupunk ${install_path}/bin/
+cp ${source_path}/bin/setgpupunk.sh ${install_path}/bin/
 
