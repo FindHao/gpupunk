@@ -81,6 +81,14 @@ typedef struct gpu_patch_aux_address_dict {
   uint32_t hit[GPU_PATCH_ADDRESS_DICT_SIZE];
 } gpu_patch_aux_address_dict_t;
 
+/**
+ * @brief This structure is used to store the address and the number of times it is accessed. For now, I assume each address is accessed with the 4 bytes.
+*/
+typedef struct gpu_patch_addr_hist {
+  uint64_t address;
+  uint64_t count;
+} gpu_patch_addr_hist_t;
+
 typedef struct gpu_patch_buffer {
   volatile uint32_t full;
   volatile uint32_t analysis;

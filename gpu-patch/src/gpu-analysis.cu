@@ -377,10 +377,51 @@ extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
   }
 }
 
+/**
+ * Each gpu_patch_buffer_t has a pointer to its records, and each records has 32 addresses. This function will unfold this structure into gpu_patch_buffer_t has new records while each record only has one address and its count.
+ * @param buffer: the original buffer with a bunch of records
+ * @param tmp_buffer: the buffer with unfolded records
+ */
+static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patch_buffer_t *tmp_buffer) {
+  auto warp_index = blockDim.x / GPU_PATCH_WARP_SIZE * blockIdx.x + threadIdx.x / GPU_PATCH_WARP_SIZE;
+  // by default it is 4
+  auto num_warps = blockDim.x / GPU_PATCH_WARP_SIZE;
+  auto laneid = get_laneid();
+  gpu_patch_record_address_t *records = (gpu_patch_record_address_t *)patch_buffer->records;
+  gpu_patch_addr_hist_t *addr_hist = (gpu_patch_addr_hist_t *)tmp_buffer->records;
+  PRINT("gpu analysis->full: %u, analysis: %u, head_index: %u, tail_index: %u, size: %u, num_threads: %u",
+        patch_buffer->full, patch_buffer->analysis, patch_buffer->head_index, patch_buffer->tail_index,
+        patch_buffer->size, patch_buffer->num_threads)
+  // each warp will take care with one record (32 addresses)
+  for (auto iter = warp_index; iter < patch_buffer->head_index; iter += num_warps) {
+    gpu_patch_record_address_t *record = records + iter;
+    uint64_t address = record->address[laneid];
+    // if the thread is not active, set the address to 0
+    if (((0x1u << laneid) & record->active) == 0) {
+      address = 0;
+    }
+    addr_hist[iter * GPU_PATCH_WARP_SIZE + laneid].address = address;
+  }
+}
+
 extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
     __global__
-    void gpu_preprocessor_decompose_records(
+    void gpu_analysis_hist(
         gpu_patch_buffer_t *buffer,
-        uint64_t *) {
+        gpu_patch_buffer_t *tmp_buffer
+        // gpu_patch_buffer_t *hist_buffer
+        ) {
+  // // Continue processing until CPU notifies analysis is done
+  // while (true) {
+  //   // Wait until GPU notifies buffer is full. i.e., analysis can begin process.
+  //   // Block sampling is not allowed
+  //   while (buffer->analysis == 0 && atomic_load(&buffer->num_threads) != 0)
+  //     ;
+  //   if (atomic_load(&buffer->num_threads) == 0) {
+  //     // buffer->analysis must be 0
+  //     break;
+  //   }
 
+  // }
+  unfold_records(buffer, tmp_buffer);
 }
