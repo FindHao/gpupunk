@@ -89,6 +89,9 @@ typedef struct gpu_patch_addr_hist {
   uint64_t count;
 } gpu_patch_addr_hist_t;
 
+/*This type is used to store the unfoled records.*/
+typedef uint64_t gpu_patch_addr_sort_t;
+
 typedef struct gpu_patch_buffer {
   volatile uint32_t full;
   volatile uint32_t analysis;
