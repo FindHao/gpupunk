@@ -4,6 +4,7 @@
 
 #include "gpu-patch.h"
 #include "utils.h"
+#include <cub/cub.cuh>
 
 #define GPU_ANALYSIS_DEBUG 1
 
@@ -42,6 +43,7 @@
     cudaError_t status = SANITIZER_FN_NAME(fn) args; \
     if (status != cudaSuccess)                       \
     {                                                \
+      fprintf(stderr, "error in %s\n", #fn);         \
       fprintf(stderr, "error code %s\n",             \
               cudaGetErrorString(status));           \
       exit(EXIT_FAILURE);                            \
@@ -74,30 +76,45 @@ static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patc
     {
       address = 0;
     }
-
     addr_hist[iter * GPU_PATCH_WARP_SIZE + laneid] = address;
   }
   tmp_buffer->head_index = patch_buffer->head_index * GPU_PATCH_WARP_SIZE;
 }
+
+// #define ITEMS_PER_THREAD 40960
+#define ITEMS_PER_THREAD 4
+
 template <int THREADS>
-static __device__ void block_radix_sort(gpu_patch_buffer_t *tmp_buffer, gpu_patch_buffer_t *hist_buffer) {
+static __device__ void block_radix_sort(
+  gpu_patch_buffer_t *tmp_buffer,
+  gpu_patch_addr_sort_t *tmp_buffer_records_g_sorted
+) {
   int num_of_records = tmp_buffer->head_index;
   // DEFAULT_GPU_PATCH_RECORD_NUM is 1280*1024 by default. each record includes 32 addresses with uint64_t type. so the total size is 1280*1024*32*8 = 335544320 bytes. Since we have 1024 threads for our analysis kernel, each thread need 335544320/1024/1024 = 320KB memory. The max local memory per thread is 512KB, so we are good for default configuration.
-  int items_per_thread = num_of_records / THREADS;
+  // int items_per_thread = num_of_records / THREADS;
   // Specialize BlockRadixSort type for our thread block
-  typedef cub::BlockRadixSort<uint64_t, THREADS, items_per_thread, uint64_t> BlockRadixSortT;
-  // __shared__ typename BlockRadixSort::TempStorage temp_storage;
+  typedef cub::BlockRadixSort<uint64_t, THREADS, ITEMS_PER_THREAD> BlockRadixSortT;
+  __shared__ typename BlockRadixSortT::TempStorage temp_storage;
   uint64_t *keys_in = (uint64_t *)tmp_buffer->records;
+  uint64_t *keys_out = (uint64_t *)tmp_buffer_records_g_sorted;
+  uint64_t keys[ITEMS_PER_THREAD];
+  for (int i = 0; i < ITEMS_PER_THREAD; ++i) {
+    keys[i] = keys_in[threadIdx.x * ITEMS_PER_THREAD + i];
+  }
+  BlockRadixSortT(temp_storage).Sort(keys);
+  for (int i = 0; i < ITEMS_PER_THREAD; ++i) {
+    keys_out[threadIdx.x * ITEMS_PER_THREAD + i] = keys[i];
+  }
 }
 
 extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
     __global__
     void gpu_analysis_hist(
         gpu_patch_buffer_t *buffer,
-        gpu_patch_buffer_t *tmp_buffer
+        gpu_patch_buffer_t *tmp_buffer,
+        gpu_patch_addr_sort_t *tmp_buffer_records_g_sorted
         // gpu_patch_buffer_t *hist_buffer
-    )
-{
+    ) {
   // // Continue processing until CPU notifies analysis is done
   // while (true) {
   //   // Wait until GPU notifies buffer is full. i.e., analysis can begin process.
@@ -111,6 +128,7 @@ extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
 
   // }
   unfold_records(buffer, tmp_buffer);
+  // block_radix_sort<GPU_PATCH_ANALYSIS_THREADS>(tmp_buffer, tmp_buffer_records_g_sorted);
 }
 
 int main(int argc, char **argv)
@@ -121,8 +139,13 @@ int main(int argc, char **argv)
   // tmp_buffer is used to store the unfolded records
   gpu_patch_buffer_t *tmp_buffer;
   CHECK_CALL(cudaMalloc, ((void **)&tmp_buffer, sizeof(gpu_patch_buffer_t)));
+  // tmp_buffer_records_g is used to store the unfolded records
   void *tmp_buffer_records_g = NULL;
   CHECK_CALL(cudaMalloc, ((void **)&tmp_buffer_records_g,
+                          sizeof(gpu_patch_addr_sort_t) * num_records * GPU_PATCH_WARP_SIZE));
+  // tmp_buffer_records_g_sorted is used to store the sorted unfolded records
+  void * tmp_buffer_records_g_sorted = NULL;
+  CHECK_CALL(cudaMalloc, ((void **)&tmp_buffer_records_g_sorted,
                           sizeof(gpu_patch_addr_sort_t) * num_records * GPU_PATCH_WARP_SIZE));
   // we need to update the records pointer in tmp_buffer by this way. because we can't directly update the records pointer in tmp_buffer on CPU side.
   gpu_patch_buffer_t *tmp_buffer_h;
@@ -148,15 +171,17 @@ int main(int argc, char **argv)
   {
     for (int j = 0; j < GPU_PATCH_WARP_SIZE; j++)
     {
-      gpu_buffer_records_h[i].address[j] = i % 100;
+      gpu_buffer_records_h[i].address[j] = i % 10;
       gpu_buffer_records_h[i].size = 1;
     }
     gpu_buffer_records_h[i].active = 0xffffffff;
   }
   CHECK_CALL(cudaMemcpy, (gpu_buffer, gpu_buffer_h, sizeof(gpu_patch_buffer_t), cudaMemcpyHostToDevice));
   CHECK_CALL(cudaMemcpy, (gpu_buffer_records, gpu_buffer_records_h, sizeof(gpu_patch_record_address_t) * num_records, cudaMemcpyHostToDevice));
-  gpu_analysis_hist<<<1, GPU_PATCH_ANALYSIS_THREADS>>>(gpu_buffer, tmp_buffer);
+  gpu_analysis_hist<<<1, GPU_PATCH_ANALYSIS_THREADS>>>(gpu_buffer, tmp_buffer, (gpu_patch_addr_sort_t *)tmp_buffer_records_g_sorted);
+  
   gpu_patch_addr_sort_t *tmp_buffer_records_h = (gpu_patch_addr_sort_t *)malloc(sizeof(gpu_patch_addr_sort_t) * num_records * GPU_PATCH_WARP_SIZE);
+  // copy the unfolded records from GPU to CPU
   CHECK_CALL(cudaMemcpy, (tmp_buffer_records_h, tmp_buffer_records_g, sizeof(gpu_patch_addr_sort_t) * num_records * GPU_PATCH_WARP_SIZE, cudaMemcpyDeviceToHost));
   CHECK_CALL(cudaDeviceSynchronize, ());
   for (int i = 0; i < num_records; i++)
