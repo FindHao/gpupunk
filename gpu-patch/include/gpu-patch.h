@@ -7,6 +7,7 @@
 #define GPU_PATCH_MAX_ACCESS_SIZE (16)
 #define GPU_PATCH_WARP_SIZE (32)
 #define GPU_PATCH_ANALYSIS_THREADS (1024)
+#define GPU_PATH_ANALYSIS_NUM_WARPS (GPU_PATCH_ANALYSIS_THREADS / GPU_PATCH_WARP_SIZE)
 #define GPU_PATCH_ANALYSIS_ITEMS (4)
 #define GPU_PATCH_ADDRESS_DICT_SIZE (1024)
 
@@ -86,7 +87,7 @@ typedef struct gpu_patch_aux_address_dict {
 */
 typedef struct gpu_patch_addr_hist {
   uint64_t address;
-  uint64_t count;
+  int count;
 } gpu_patch_addr_hist_t;
 
 /*This type is used to store the unfoled records.*/

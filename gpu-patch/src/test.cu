@@ -68,6 +68,7 @@ static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patc
   PRINT("gpu analysis->full: %u, analysis: %u, head_index: %u, tail_index: %u, size: %u, num_threads: %u",
         patch_buffer->full, patch_buffer->analysis, patch_buffer->head_index, patch_buffer->tail_index,
         patch_buffer->size, patch_buffer->num_threads)
+  int addr_hist_index = 0;
   // each warp will take care with one record (32 addresses) in each iteration
   for (auto iter = warp_id; iter < patch_buffer->head_index; iter += num_warps)
   {
@@ -100,16 +101,43 @@ static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patc
     int leading_zeros = __clz(inverted_x & mask);
     int leading_ones = (predicate & (1 << (laneid + 1))) ? leading_zeros - leading_zeros_origin : 0;
     int count = leading_ones + 1;
-    int unique_count = __ballot_sync(0xffffffff, is_unique);
+    // how many unique addresses in this warp
+    int unique_mark = __ballot_sync(0xffffffff, is_unique);
+    __shared__ int unique_count_shared[GPU_PATH_ANALYSIS_NUM_WARPS];
+    __shared__ int unique_count_shared_accumulate[GPU_PATH_ANALYSIS_NUM_WARPS];
+    if (laneid == 0)
+    {
+      unique_count_shared[warp_id] = __popc(unique_mark);
+      // unique_count_shared_accumulate[warp_id] = __popc(unique_mark);
+      if (warp_id == 0){
+        int next_start = 0;
+        for (int i = 0; i < GPU_PATH_ANALYSIS_NUM_WARPS; i++){
+          unique_count_shared_accumulate[i] = next_start;
+          next_start += unique_count_shared[i];
+        }
+      }
+    }
+    __shared__ uint64_t addr_hist_addr[GPU_PATCH_WARP_SIZE * GPU_PATH_ANALYSIS_NUM_WARPS];
+    __shared__ int addr_hist_count[GPU_PATCH_WARP_SIZE * GPU_PATH_ANALYSIS_NUM_WARPS];
+    __syncthreads();
     if (is_unique)
     {
-      int output_idx = iter * GPU_PATCH_WARP_SIZE + __popc(unique_count & ((1 << laneid) - 1));
-      addr_hist[output_idx].address = value;
-      addr_hist[output_idx].count = count;
+      int output_idx = __popc(unique_mark & ((1 << laneid) - 1)) + unique_count_shared_accumulate[warp_id];
+      addr_hist_addr[output_idx] = value;
+      addr_hist_count[output_idx] = count;
     }
-    int num_unique = __popc(__ballot_sync(0xffffffff, is_unique));
+    __syncthreads();
+    if (idx == 0){
+      int all_unique_count = unique_count_shared_accumulate[GPU_PATH_ANALYSIS_NUM_WARPS - 1] + unique_count_shared[GPU_PATH_ANALYSIS_NUM_WARPS - 1];
+      for (int i = 0; i < all_unique_count; i++){
+        addr_hist[addr_hist_index + i].address = addr_hist_addr[i];
+        addr_hist[addr_hist_index + i].count = addr_hist_count[i];
+      }
+      addr_hist_index += all_unique_count;
+    }
   }
-  tmp_buffer->head_index = patch_buffer->head_index * GPU_PATCH_WARP_SIZE;
+  // tmp_buffer->head_index = patch_buffer->head_index * GPU_PATCH_WARP_SIZE;
+  tmp_buffer->head_index = addr_hist_index;
 }
 
 // #define ITEMS_PER_THREAD 40960
@@ -129,11 +157,13 @@ static __device__ void block_radix_sort(
   uint64_t *keys_in = (uint64_t *)tmp_buffer->records;
   uint64_t *keys_out = (uint64_t *)tmp_buffer_records_g_sorted;
   uint64_t keys[ITEMS_PER_THREAD];
-  for (int i = 0; i < ITEMS_PER_THREAD; ++i) {
+  for (int i = 0; i < ITEMS_PER_THREAD; ++i)
+  {
     keys[i] = keys_in[threadIdx.x * ITEMS_PER_THREAD + i];
   }
   BlockRadixSortT(temp_storage).Sort(keys);
-  for (int i = 0; i < ITEMS_PER_THREAD; ++i) {
+  for (int i = 0; i < ITEMS_PER_THREAD; ++i)
+  {
     keys_out[threadIdx.x * ITEMS_PER_THREAD + i] = keys[i];
   }
 }
@@ -145,7 +175,8 @@ extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
         gpu_patch_buffer_t *tmp_buffer,
         gpu_patch_addr_hist_t *tmp_buffer_records_g_sorted
         // gpu_patch_buffer_t *hist_buffer
-    ) {
+    )
+{
   // // Continue processing until CPU notifies analysis is done
   // while (true) {
   //   // Wait until GPU notifies buffer is full. i.e., analysis can begin process.
@@ -175,7 +206,7 @@ int main(int argc, char **argv)
   CHECK_CALL(cudaMalloc, ((void **)&tmp_buffer_records_g,
                           sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE));
   // tmp_buffer_records_g_sorted is used to store the sorted unfolded records
-  void * tmp_buffer_records_g_sorted = NULL;
+  void *tmp_buffer_records_g_sorted = NULL;
   CHECK_CALL(cudaMalloc, ((void **)&tmp_buffer_records_g_sorted,
                           sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE));
   // we need to update the records pointer in tmp_buffer by this way. because we can't directly update the records pointer in tmp_buffer on CPU side.
@@ -210,7 +241,7 @@ int main(int argc, char **argv)
   CHECK_CALL(cudaMemcpy, (gpu_buffer, gpu_buffer_h, sizeof(gpu_patch_buffer_t), cudaMemcpyHostToDevice));
   CHECK_CALL(cudaMemcpy, (gpu_buffer_records, gpu_buffer_records_h, sizeof(gpu_patch_record_address_t) * num_records, cudaMemcpyHostToDevice));
   gpu_analysis_hist<<<1, GPU_PATCH_ANALYSIS_THREADS>>>(gpu_buffer, tmp_buffer, (gpu_patch_addr_hist_t *)tmp_buffer_records_g_sorted);
-  
+
   gpu_patch_addr_hist_t *tmp_buffer_records_h = (gpu_patch_addr_hist_t *)malloc(sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE);
   // copy the unfolded records from GPU to CPU
   CHECK_CALL(cudaMemcpy, (tmp_buffer_records_h, tmp_buffer_records_g, sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE, cudaMemcpyDeviceToHost));
