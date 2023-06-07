@@ -140,32 +140,30 @@ static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patc
   unfolded_buffer->head_index = addr_hist_index;
 }
 
-// #define ITEMS_PER_THREAD 40960
 #define ITEMS_PER_THREAD 4
 
+/**
+ * @brief This function only sorts THREADS * ITEMS_PER_THREAD items in unfolded_buffer->records
+ * @Yueming TODO: add the histogram part
+*/
 template <int THREADS>
-static __device__ void block_radix_sort(
-    gpu_patch_buffer_t *unfolded_buffer,
-    gpu_patch_addr_hist_t *unfolded_buffer_records_g_sorted)
+static __device__ void block_radix_sort_tile(
+    uint64_t *d_in,
+    uint64_t *d_out)
 {
-  int num_of_records = unfolded_buffer->head_index;
-  // DEFAULT_GPU_PATCH_RECORD_NUM is 1280*1024 by default. each record includes 32 addresses with uint64_t type. so the total size is 1280*1024*32*8 = 335544320 bytes. Since we have 1024 threads for our analysis kernel, each thread need 335544320/1024/1024 = 320KB memory. The max local memory per thread is 512KB, so we are good for default configuration.
-  // int items_per_thread = num_of_records / THREADS;
-  // Specialize BlockRadixSort type for our thread block
   typedef cub::BlockRadixSort<uint64_t, THREADS, ITEMS_PER_THREAD> BlockRadixSortT;
   __shared__ typename BlockRadixSortT::TempStorage temp_storage;
-  uint64_t *keys_in = (uint64_t *)unfolded_buffer->records;
-  uint64_t *keys_out = (uint64_t *)unfolded_buffer_records_g_sorted;
   uint64_t keys[ITEMS_PER_THREAD];
   for (int i = 0; i < ITEMS_PER_THREAD; ++i)
   {
-    keys[i] = keys_in[threadIdx.x * ITEMS_PER_THREAD + i];
+    keys[i] = d_in[threadIdx.x * ITEMS_PER_THREAD + i];
   }
   BlockRadixSortT(temp_storage).Sort(keys);
   for (int i = 0; i < ITEMS_PER_THREAD; ++i)
   {
-    keys_out[threadIdx.x * ITEMS_PER_THREAD + i] = keys[i];
+    d_out[threadIdx.x * ITEMS_PER_THREAD + i] = keys[i];
   }
+  // maybe we can use the similar code in unfold_records to process all 4 warps in a block. 
 }
 
 extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
@@ -190,6 +188,7 @@ extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
 
   // }
   unfold_records(buffer, unfolded_buffer);
+  // @Yueming TODO: use a for loop to split the unfolded_buffer into multiple tiles, and use block_radix_sort_tile to process each tile. Add another outside for loop to process at least twice to compress more. Finally, the unfolded_buffer_records_g_sorted will have compressed histogram.
   // block_radix_sort<GPU_PATCH_ANALYSIS_THREADS>(unfolded_buffer, unfolded_buffer_records_g_sorted);
 }
 
