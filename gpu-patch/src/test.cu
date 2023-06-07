@@ -53,9 +53,9 @@
 /**
  * Each gpu_patch_buffer_t has a pointer to its records, and each records has 32 addresses. This function will unfold this structure into gpu_patch_buffer_t has new records while each record only has one address and its count.
  * @param buffer: the original buffer with a bunch of records
- * @param tmp_buffer: the buffer with unfolded records
+ * @param unfolded_buffer: the buffer with unfolded and intra-warp-processed records.
  */
-static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patch_buffer_t *tmp_buffer)
+static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patch_buffer_t *unfolded_buffer)
 {
   auto warp_id = blockDim.x / GPU_PATCH_WARP_SIZE * blockIdx.x + threadIdx.x / GPU_PATCH_WARP_SIZE;
   // by default it is 4
@@ -64,7 +64,7 @@ static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patc
   const int idx = threadIdx.x + blockDim.x * blockIdx.x;
 
   gpu_patch_record_address_t *records = (gpu_patch_record_address_t *)patch_buffer->records;
-  gpu_patch_addr_hist_t *addr_hist = (gpu_patch_addr_hist_t *)tmp_buffer->records;
+  gpu_patch_addr_hist_t *addr_hist = (gpu_patch_addr_hist_t *)unfolded_buffer->records;
   PRINT("gpu analysis->full: %u, analysis: %u, head_index: %u, tail_index: %u, size: %u, num_threads: %u",
         patch_buffer->full, patch_buffer->analysis, patch_buffer->head_index, patch_buffer->tail_index,
         patch_buffer->size, patch_buffer->num_threads)
@@ -136,8 +136,8 @@ static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patc
       addr_hist_index += all_unique_count;
     }
   }
-  // tmp_buffer->head_index = patch_buffer->head_index * GPU_PATCH_WARP_SIZE;
-  tmp_buffer->head_index = addr_hist_index;
+  // unfolded_buffer->head_index = patch_buffer->head_index * GPU_PATCH_WARP_SIZE;
+  unfolded_buffer->head_index = addr_hist_index;
 }
 
 // #define ITEMS_PER_THREAD 40960
@@ -145,17 +145,17 @@ static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patc
 
 template <int THREADS>
 static __device__ void block_radix_sort(
-    gpu_patch_buffer_t *tmp_buffer,
-    gpu_patch_addr_hist_t *tmp_buffer_records_g_sorted)
+    gpu_patch_buffer_t *unfolded_buffer,
+    gpu_patch_addr_hist_t *unfolded_buffer_records_g_sorted)
 {
-  int num_of_records = tmp_buffer->head_index;
+  int num_of_records = unfolded_buffer->head_index;
   // DEFAULT_GPU_PATCH_RECORD_NUM is 1280*1024 by default. each record includes 32 addresses with uint64_t type. so the total size is 1280*1024*32*8 = 335544320 bytes. Since we have 1024 threads for our analysis kernel, each thread need 335544320/1024/1024 = 320KB memory. The max local memory per thread is 512KB, so we are good for default configuration.
   // int items_per_thread = num_of_records / THREADS;
   // Specialize BlockRadixSort type for our thread block
   typedef cub::BlockRadixSort<uint64_t, THREADS, ITEMS_PER_THREAD> BlockRadixSortT;
   __shared__ typename BlockRadixSortT::TempStorage temp_storage;
-  uint64_t *keys_in = (uint64_t *)tmp_buffer->records;
-  uint64_t *keys_out = (uint64_t *)tmp_buffer_records_g_sorted;
+  uint64_t *keys_in = (uint64_t *)unfolded_buffer->records;
+  uint64_t *keys_out = (uint64_t *)unfolded_buffer_records_g_sorted;
   uint64_t keys[ITEMS_PER_THREAD];
   for (int i = 0; i < ITEMS_PER_THREAD; ++i)
   {
@@ -172,8 +172,8 @@ extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
     __global__
     void gpu_analysis_hist(
         gpu_patch_buffer_t *buffer,
-        gpu_patch_buffer_t *tmp_buffer,
-        gpu_patch_addr_hist_t *tmp_buffer_records_g_sorted
+        gpu_patch_buffer_t *unfolded_buffer,
+        gpu_patch_addr_hist_t *unfolded_buffer_records_g_sorted
         // gpu_patch_buffer_t *hist_buffer
     )
 {
@@ -189,8 +189,8 @@ extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
   //   }
 
   // }
-  unfold_records(buffer, tmp_buffer);
-  // block_radix_sort<GPU_PATCH_ANALYSIS_THREADS>(tmp_buffer, tmp_buffer_records_g_sorted);
+  unfold_records(buffer, unfolded_buffer);
+  // block_radix_sort<GPU_PATCH_ANALYSIS_THREADS>(unfolded_buffer, unfolded_buffer_records_g_sorted);
 }
 
 int main(int argc, char **argv)
@@ -198,23 +198,23 @@ int main(int argc, char **argv)
   std::cout << "Hello, world!" << std::endl;
   int num_records = 1024;
 
-  // tmp_buffer is used to store the unfolded records
-  gpu_patch_buffer_t *tmp_buffer;
-  CHECK_CALL(cudaMalloc, ((void **)&tmp_buffer, sizeof(gpu_patch_buffer_t)));
-  // tmp_buffer_records_g is used to store the unfolded records
-  void *tmp_buffer_records_g = NULL;
-  CHECK_CALL(cudaMalloc, ((void **)&tmp_buffer_records_g,
+  // unfolded_buffer is used to store the unfolded records
+  gpu_patch_buffer_t *unfolded_buffer;
+  CHECK_CALL(cudaMalloc, ((void **)&unfolded_buffer, sizeof(gpu_patch_buffer_t)));
+  // unfolded_buffer_records_g is used to store the unfolded records
+  void *unfolded_buffer_records_g = NULL;
+  CHECK_CALL(cudaMalloc, ((void **)&unfolded_buffer_records_g,
                           sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE));
-  // tmp_buffer_records_g_sorted is used to store the sorted unfolded records
-  void *tmp_buffer_records_g_sorted = NULL;
-  CHECK_CALL(cudaMalloc, ((void **)&tmp_buffer_records_g_sorted,
+  // unfolded_buffer_records_g_sorted is used to store the sorted unfolded records
+  void *unfolded_buffer_records_g_sorted = NULL;
+  CHECK_CALL(cudaMalloc, ((void **)&unfolded_buffer_records_g_sorted,
                           sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE));
-  // we need to update the records pointer in tmp_buffer by this way. because we can't directly update the records pointer in tmp_buffer on CPU side.
-  gpu_patch_buffer_t *tmp_buffer_h;
-  tmp_buffer_h = (gpu_patch_buffer_t *)malloc(sizeof(gpu_patch_buffer_t));
-  tmp_buffer_h->records = tmp_buffer_records_g;
+  // we need to update the records pointer in unfolded_buffer by this way. because we can't directly update the records pointer in unfolded_buffer on CPU side.
+  gpu_patch_buffer_t *unfolded_buffer_h;
+  unfolded_buffer_h = (gpu_patch_buffer_t *)malloc(sizeof(gpu_patch_buffer_t));
+  unfolded_buffer_h->records = unfolded_buffer_records_g;
 
-  CHECK_CALL(cudaMemcpy, (tmp_buffer, tmp_buffer_h, sizeof(gpu_patch_buffer_t), cudaMemcpyHostToDevice));
+  CHECK_CALL(cudaMemcpy, (unfolded_buffer, unfolded_buffer_h, sizeof(gpu_patch_buffer_t), cudaMemcpyHostToDevice));
 
   // gpu_buffer stores the original trace
   gpu_patch_buffer_t *gpu_buffer;
@@ -240,27 +240,27 @@ int main(int argc, char **argv)
   }
   CHECK_CALL(cudaMemcpy, (gpu_buffer, gpu_buffer_h, sizeof(gpu_patch_buffer_t), cudaMemcpyHostToDevice));
   CHECK_CALL(cudaMemcpy, (gpu_buffer_records, gpu_buffer_records_h, sizeof(gpu_patch_record_address_t) * num_records, cudaMemcpyHostToDevice));
-  gpu_analysis_hist<<<1, GPU_PATCH_ANALYSIS_THREADS>>>(gpu_buffer, tmp_buffer, (gpu_patch_addr_hist_t *)tmp_buffer_records_g_sorted);
+  gpu_analysis_hist<<<1, GPU_PATCH_ANALYSIS_THREADS>>>(gpu_buffer, unfolded_buffer, (gpu_patch_addr_hist_t *)unfolded_buffer_records_g_sorted);
 
-  gpu_patch_addr_hist_t *tmp_buffer_records_h = (gpu_patch_addr_hist_t *)malloc(sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE);
+  gpu_patch_addr_hist_t *unfolded_buffer_records_h = (gpu_patch_addr_hist_t *)malloc(sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE);
   // copy the unfolded records from GPU to CPU
-  CHECK_CALL(cudaMemcpy, (tmp_buffer_records_h, tmp_buffer_records_g, sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE, cudaMemcpyDeviceToHost));
+  CHECK_CALL(cudaMemcpy, (unfolded_buffer_records_h, unfolded_buffer_records_g, sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE, cudaMemcpyDeviceToHost));
   CHECK_CALL(cudaDeviceSynchronize, ());
   std::cout << "unfolded records:" << std::endl;
   for (int i = 0; i < num_records; i++)
   {
     for (int j = 0; j < GPU_PATCH_WARP_SIZE; j++)
     {
-      std::cout << tmp_buffer_records_h[i * GPU_PATCH_WARP_SIZE + j].address << ":" << tmp_buffer_records_h[i * GPU_PATCH_WARP_SIZE + j].count << "  ";
+      std::cout << unfolded_buffer_records_h[i * GPU_PATCH_WARP_SIZE + j].address << ":" << unfolded_buffer_records_h[i * GPU_PATCH_WARP_SIZE + j].count << "  ";
     }
     std::cout << std::endl;
   }
 
   CHECK_CALL(cudaFree, (gpu_buffer));
   CHECK_CALL(cudaFree, (gpu_buffer_records));
-  CHECK_CALL(cudaFree, (tmp_buffer));
-  CHECK_CALL(cudaFree, (tmp_buffer_records_g));
-  free(tmp_buffer_h);
+  CHECK_CALL(cudaFree, (unfolded_buffer));
+  CHECK_CALL(cudaFree, (unfolded_buffer_records_g));
+  free(unfolded_buffer_h);
   free(gpu_buffer_h);
   free(gpu_buffer_records_h);
 
