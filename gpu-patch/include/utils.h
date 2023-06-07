@@ -121,6 +121,8 @@ __device__ __forceinline__ uint32_t ballot(int32_t predicate, uint32_t mask = 0x
 #else
   ret = __ballot(predicate);
 #endif
+#else
+  ret = __ballot(predicate);
 #endif
   return ret;
 }
