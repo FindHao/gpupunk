@@ -51,7 +51,7 @@
   }
 
 /**
- * Each gpu_patch_buffer_t has a pointer to its records, and each records has 32 addresses. This function will unfold this structure into gpu_patch_buffer_t has new records while each record only has one address and its count.
+ * Each gpu_patch_buffer_t has a pointer to its records, and each records has 32 addresses. This function will unfold this structure into gpu_patch_buffer_t has new records while each record only has one address and its count. Besides the unfolding, this function will also do intra-warp counting.
  * @param buffer: the original buffer with a bunch of records
  * @param unfolded_buffer: the buffer with unfolded and intra-warp-processed records.
  */
@@ -69,9 +69,17 @@ static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patc
         patch_buffer->full, patch_buffer->analysis, patch_buffer->head_index, patch_buffer->tail_index,
         patch_buffer->size, patch_buffer->num_threads)
   int addr_hist_index = 0;
+  auto iter = warp_id;
+  int round_head_index = (patch_buffer->head_index + num_warps - 1) / num_warps * num_warps;
+  // every record has 32 addresses with mask. but the number of record may not be `num_warps` aligned.
+  // e.g., there are 3 records. we need to let the last warp be inactive.
   // each warp will take care with one record (32 addresses) in each iteration
-  for (auto iter = warp_id; iter < patch_buffer->head_index; iter += num_warps)
+  for (; iter < round_head_index; iter += num_warps)
   {
+    if (iter >= patch_buffer->head_index)
+    {
+      continue;
+    }
     gpu_patch_record_address_t *record = records + iter;
     uint64_t address = record->address[laneid];
     // if the thread is not active, set the address to 0
@@ -109,9 +117,11 @@ static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patc
     {
       unique_count_shared[warp_id] = __popc(unique_mark);
       // unique_count_shared_accumulate[warp_id] = __popc(unique_mark);
-      if (warp_id == 0){
+      if (warp_id == 0)
+      {
         int next_start = 0;
-        for (int i = 0; i < GPU_PATH_ANALYSIS_NUM_WARPS; i++){
+        for (int i = 0; i < GPU_PATH_ANALYSIS_NUM_WARPS; i++)
+        {
           unique_count_shared_accumulate[i] = next_start;
           next_start += unique_count_shared[i];
         }
@@ -127,9 +137,11 @@ static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patc
       addr_hist_count[output_idx] = count;
     }
     __syncthreads();
-    if (idx == 0){
+    if (idx == 0)
+    {
       int all_unique_count = unique_count_shared_accumulate[GPU_PATH_ANALYSIS_NUM_WARPS - 1] + unique_count_shared[GPU_PATH_ANALYSIS_NUM_WARPS - 1];
-      for (int i = 0; i < all_unique_count; i++){
+      for (int i = 0; i < all_unique_count; i++)
+      {
         addr_hist[addr_hist_index + i].address = addr_hist_addr[i];
         addr_hist[addr_hist_index + i].count = addr_hist_count[i];
       }
@@ -140,13 +152,11 @@ static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patc
   unfolded_buffer->head_index = addr_hist_index;
 }
 
-#define ITEMS_PER_THREAD 4
-
 /**
  * @brief This function only sorts THREADS * ITEMS_PER_THREAD items in unfolded_buffer->records
  * @Yueming TODO: add the histogram part
-*/
-template <int THREADS>
+ */
+template <int THREADS, int ITEMS_PER_THREAD>
 static __device__ void block_radix_sort_tile(
     uint64_t *d_in,
     uint64_t *d_out)
@@ -163,7 +173,14 @@ static __device__ void block_radix_sort_tile(
   {
     d_out[threadIdx.x * ITEMS_PER_THREAD + i] = keys[i];
   }
-  // maybe we can use the similar code in unfold_records to process all 4 warps in a block. 
+  // maybe we can use the similar code in unfold_records to process all 4 warps in a block.
+}
+
+template <int THREADS, int ITEMS_PER_THREAD>
+static __device__ void block_radix_sort(
+    gpu_patch_buffer_t *unfolded_buffer,
+    gpu_patch_buffer_t *hist_buffer)
+{
 }
 
 extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
@@ -189,13 +206,14 @@ extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
   // }
   unfold_records(buffer, unfolded_buffer);
   // @Yueming TODO: use a for loop to split the unfolded_buffer into multiple tiles, and use block_radix_sort_tile to process each tile. Add another outside for loop to process at least twice to compress more. Finally, the unfolded_buffer_records_g_sorted will have compressed histogram.
-  // block_radix_sort<GPU_PATCH_ANALYSIS_THREADS>(unfolded_buffer, unfolded_buffer_records_g_sorted);
+  // uint32_t tile_size = THREADS * GPU_PATCH_ANALYSIS_THREADS;
+  // block_radix_sort<GPU_PATCH_ANALYSIS_THREADS, GPU_PATCH_ANALYSIS_ITEMS>(unfolded_buffer, hist_buffer);
 }
 
 int main(int argc, char **argv)
 {
   std::cout << "Hello, world!" << std::endl;
-  int num_records = 1024;
+  int num_records = 3;
 
   // unfolded_buffer is used to store the unfolded records
   gpu_patch_buffer_t *unfolded_buffer;
@@ -232,7 +250,8 @@ int main(int argc, char **argv)
   {
     for (int j = 0; j < GPU_PATCH_WARP_SIZE; j++)
     {
-      gpu_buffer_records_h[i].address[j] = j % 10;
+      // gpu_buffer_records_h[i].address[j] = j % 10;
+      gpu_buffer_records_h[i].address[j] = 1;
       gpu_buffer_records_h[i].size = 1;
     }
     gpu_buffer_records_h[i].active = 0xffffffff;
@@ -244,8 +263,12 @@ int main(int argc, char **argv)
   gpu_patch_addr_hist_t *unfolded_buffer_records_h = (gpu_patch_addr_hist_t *)malloc(sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE);
   // copy the unfolded records from GPU to CPU
   CHECK_CALL(cudaMemcpy, (unfolded_buffer_records_h, unfolded_buffer_records_g, sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE, cudaMemcpyDeviceToHost));
+  // copy the head_index back to CPU
+  CHECK_CALL(cudaMemcpy, (unfolded_buffer_h, unfolded_buffer, sizeof(gpu_patch_buffer_t), cudaMemcpyDeviceToHost));
   CHECK_CALL(cudaDeviceSynchronize, ());
-  std::cout << "unfolded records:" << std::endl;
+  std::cout << std::endl
+            << "unfolded records: "
+            << "head_index:" << unfolded_buffer_h->head_index << std::endl;
   for (int i = 0; i < num_records; i++)
   {
     for (int j = 0; j < GPU_PATCH_WARP_SIZE; j++)
