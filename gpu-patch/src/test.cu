@@ -148,7 +148,6 @@ static __device__ void unfold_records(gpu_patch_buffer_t *patch_buffer, gpu_patc
       addr_hist_index += all_unique_count;
     }
   }
-  // unfolded_buffer->head_index = patch_buffer->head_index * GPU_PATCH_WARP_SIZE;
   unfolded_buffer->head_index = addr_hist_index;
 }
 
@@ -179,8 +178,29 @@ static __device__ void block_radix_sort_tile(
 template <int THREADS, int ITEMS_PER_THREAD>
 static __device__ void block_radix_sort(
     gpu_patch_buffer_t *unfolded_buffer,
-    gpu_patch_buffer_t *hist_buffer)
+    gpu_patch_buffer_t *hist_buffer,
+    gpu_patch_addr_hist_t * tmp_block_sort_tile)
 {
+    // @Yueming TODO: use a for loop to split the unfolded_buffer into multiple tiles, and use block_radix_sort_tile to process each tile. Add another outside for loop to process at least twice to compress more. Finally, the unfolded_buffer_records_g_sorted will have compressed histogram.
+  uint32_t cur_index = 0;
+  uint32_t tile_size = THREADS * ITEMS_PER_THREAD;
+  uint64_t *unfolded_buffer_records_g = unfolded_buffer->records;
+  uint64_t *hist_buffer_records = hist_buffer->records;
+
+  auto warp_id = blockDim.x / GPU_PATCH_WARP_SIZE * blockIdx.x + threadIdx.x / GPU_PATCH_WARP_SIZE;
+  // by default it is 4
+  auto num_warps = blockDim.x / GPU_PATCH_WARP_SIZE;
+  auto laneid = get_laneid();
+  const int idx = threadIdx.x + blockDim.x * blockIdx.x;
+
+  for(; cur_index + tile_size <= unfolded_buffer->head_index; cur_index += tile_size)
+  {
+    block_radix_sort_tile<THREADS, ITEMS_PER_THREAD>(
+        unfolded_buffer_records_g + cur_index,
+        tmp_block_sort_tile);
+    // @Yueming TODO: add the histogram part
+    
+  }
 }
 
 extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
@@ -188,8 +208,8 @@ extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
     void gpu_analysis_hist(
         gpu_patch_buffer_t *buffer,
         gpu_patch_buffer_t *unfolded_buffer,
-        gpu_patch_addr_hist_t *unfolded_buffer_records_g_sorted
-        // gpu_patch_buffer_t *hist_buffer
+        gpu_patch_buffer_t *hist_buffer,
+        gpu_patch_addr_hist_t* tmp_block_sort_tile
     )
 {
   // // Continue processing until CPU notifies analysis is done
@@ -205,9 +225,8 @@ extern "C" __launch_bounds__(GPU_PATCH_ANALYSIS_THREADS, 1)
 
   // }
   unfold_records(buffer, unfolded_buffer);
-  // @Yueming TODO: use a for loop to split the unfolded_buffer into multiple tiles, and use block_radix_sort_tile to process each tile. Add another outside for loop to process at least twice to compress more. Finally, the unfolded_buffer_records_g_sorted will have compressed histogram.
-  // uint32_t tile_size = THREADS * GPU_PATCH_ANALYSIS_THREADS;
-  // block_radix_sort<GPU_PATCH_ANALYSIS_THREADS, GPU_PATCH_ANALYSIS_ITEMS>(unfolded_buffer, hist_buffer);
+
+  block_radix_sort<GPU_PATCH_ANALYSIS_THREADS, GPU_PATCH_ANALYSIS_ITEMS>(unfolded_buffer, hist_buffer, tmp_block_sort_tile);
 }
 
 int main(int argc, char **argv)
@@ -218,20 +237,29 @@ int main(int argc, char **argv)
   // unfolded_buffer is used to store the unfolded records
   gpu_patch_buffer_t *unfolded_buffer;
   CHECK_CALL(cudaMalloc, ((void **)&unfolded_buffer, sizeof(gpu_patch_buffer_t)));
-  // unfolded_buffer_records_g is used to store the unfolded records
+  // unfolded_buffer_records_g is used to store the unfolded records. the pointer of records in unfolded_buffer is updated to this pointer.
   void *unfolded_buffer_records_g = NULL;
   CHECK_CALL(cudaMalloc, ((void **)&unfolded_buffer_records_g,
                           sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE));
-  // unfolded_buffer_records_g_sorted is used to store the sorted unfolded records
-  void *unfolded_buffer_records_g_sorted = NULL;
-  CHECK_CALL(cudaMalloc, ((void **)&unfolded_buffer_records_g_sorted,
-                          sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE));
-  // we need to update the records pointer in unfolded_buffer by this way. because we can't directly update the records pointer in unfolded_buffer on CPU side.
+  // it is used to store the itermediate sorted records in block_radix_sort
+  void *tmp_block_sort_tile = NULL;
+  CHECK_CALL(cudaMalloc, ((void **)&tmp_block_sort_tile,
+                          sizeof(gpu_patch_addr_hist_t) * GPU_PATCH_ANALYSIS_THREADS * GPU_PATCH_ANALYSIS_ITEMS));
   gpu_patch_buffer_t *unfolded_buffer_h;
   unfolded_buffer_h = (gpu_patch_buffer_t *)malloc(sizeof(gpu_patch_buffer_t));
+  // we need to update the records pointer in unfolded_buffer by this way. because we can't directly update the records pointer in unfolded_buffer on CPU side.
   unfolded_buffer_h->records = unfolded_buffer_records_g;
-
   CHECK_CALL(cudaMemcpy, (unfolded_buffer, unfolded_buffer_h, sizeof(gpu_patch_buffer_t), cudaMemcpyHostToDevice));
+
+  gpu_patch_buffer_t * hist_buffer;
+  CHECK_CALL(cudaMalloc, ((void **)&hist_buffer, sizeof(gpu_patch_buffer_t)));
+  void *hist_buffer_records_g = NULL;
+  CHECK_CALL(cudaMalloc, ((void **)&hist_buffer_records_g,
+                          sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE));
+  gpu_patch_buffer_t *hist_buffer_h;
+  hist_buffer_h = (gpu_patch_buffer_t *)malloc(sizeof(gpu_patch_buffer_t));
+  hist_buffer_h->records = hist_buffer_records_g;
+  CHECK_CALL(cudaMemcpy, (hist_buffer, hist_buffer_h, sizeof(gpu_patch_buffer_t), cudaMemcpyHostToDevice));
 
   // gpu_buffer stores the original trace
   gpu_patch_buffer_t *gpu_buffer;
@@ -256,9 +284,10 @@ int main(int argc, char **argv)
     }
     gpu_buffer_records_h[i].active = 0xffffffff;
   }
+
   CHECK_CALL(cudaMemcpy, (gpu_buffer, gpu_buffer_h, sizeof(gpu_patch_buffer_t), cudaMemcpyHostToDevice));
   CHECK_CALL(cudaMemcpy, (gpu_buffer_records, gpu_buffer_records_h, sizeof(gpu_patch_record_address_t) * num_records, cudaMemcpyHostToDevice));
-  gpu_analysis_hist<<<1, GPU_PATCH_ANALYSIS_THREADS>>>(gpu_buffer, unfolded_buffer, (gpu_patch_addr_hist_t *)unfolded_buffer_records_g_sorted);
+  gpu_analysis_hist<<<1, GPU_PATCH_ANALYSIS_THREADS>>>(gpu_buffer, unfolded_buffer, hist_buffer, tmp_block_sort_tile);
 
   gpu_patch_addr_hist_t *unfolded_buffer_records_h = (gpu_patch_addr_hist_t *)malloc(sizeof(gpu_patch_addr_hist_t) * num_records * GPU_PATCH_WARP_SIZE);
   // copy the unfolded records from GPU to CPU
